@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id            Int                  @id @default(autoincrement())
+  username      String               @unique(map: "username") @db.VarChar(255)
+  email         String               @unique(map: "email") @db.VarChar(255)
+  password      String               @db.VarChar(255)
+  role          Role
+  created_at    DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at    DateTime?            @default(now()) @updatedAt @db.Timestamp(0)
+  admin         Admin?
+  interventions MentalIntervention[] @relation("AssignedBy")
+  student       Siswa?
+  teacher       Guru?
+
+  @@map("users")
+}
+
+model SchoolClass {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(100)
+  major      String    @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  students   Siswa[]
+
+  @@map("classes")
+}
+
+model Siswa {
+  id                Int                  @id @default(autoincrement())
+  user_id           Int                  @unique(map: "user_id")
+  class_id          Int
+  nis               String               @unique(map: "nis") @db.VarChar(50)
+  name              String               @db.VarChar(255)
+  avatar            String?              @db.LongText
+  literacy_level    String?              @db.VarChar(50)
+  mental_level      String?              @db.VarChar(50)
+  adaptive_literacy String?              @db.VarChar(255)
+  adaptive_mental   String?              @db.VarChar(255)
+  module_progress   Int?                 @default(0)
+  risk_flag         Boolean?             @default(false)
+  created_at        DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?            @default(now()) @updatedAt @db.Timestamp(0)
+  ai_feedbacks      AIFeedback[]
+  mental_insights   MentalInsight[]
+  interventions     MentalIntervention[]
+  mental_journals   MentalJournal[]
+  quiz_attempts     QuizAttempt[]
+  student_badges    StudentBadge[]
+  completed_modules CompletedModule[]
+  user              User                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "students_ibfk_1")
+  class             SchoolClass          @relation(fields: [class_id], references: [id], onUpdate: NoAction, map: "students_ibfk_2")
+
+  @@index([class_id], map: "class_id")
+  @@map("students")
+}
+
+model Guru {
+  id             Int       @id @default(autoincrement())
+  user_id        Int       @unique(map: "user_id")
+  nip            String    @unique(map: "nip") @db.VarChar(50)
+  name           String    @db.VarChar(255)
+  specialization String?   @db.VarChar(255)
+  position       String?   @db.VarChar(150)
+  phone_number   String?   @db.VarChar(20)
+  created_at     DateTime? @default(now()) @db.Timestamp(0)
+  updated_at     DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "teachers_ibfk_1")
+
+  @@map("teachers")
+}
+
+model Admin {
+  id         Int       @id @default(autoincrement())
+  user_id    Int       @unique(map: "user_id")
+  name       String    @db.VarChar(255)
+  division   String?   @db.VarChar(100)
+  unit       String?   @db.VarChar(150)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "admins_ibfk_1")
+
+  @@map("admins")
+}
+
+model Category {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique(map: "name") @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  modules    Module[]
+
+  @@map("categories")
+}
+
+model Level {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique(map: "name") @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  modules    Module[]
+
+  @@map("levels")
+}
+
+model Module {
+  id           Int               @id @default(autoincrement())
+  title        String            @db.VarChar(255)
+  content      String?           @db.Text
+  video_url    String?           @db.VarChar(255)
+  media_type   String?           @db.VarChar(50)
+  category_id  Int
+  level_id     Int
+  created_at   DateTime?         @default(now()) @db.Timestamp(0)
+  updated_at   DateTime?         @default(now()) @updatedAt @db.Timestamp(0)
+  feedbacks    AIFeedback[]
+  category     Category          @relation(fields: [category_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "modules_ibfk_1")
+  level        Level             @relation(fields: [level_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "modules_ibfk_2")
+  quizzes      Quiz[]
+  completed_by CompletedModule[]
+
+  @@index([category_id], map: "category_id")
+  @@index([level_id], map: "level_id")
+  @@map("modules")
+}
+
+model Quiz {
+  id         Int           @id @default(autoincrement())
+  title      String        @db.VarChar(255)
+  type       QuizType
+  module_id  Int?
+  created_at DateTime?     @default(now()) @db.Timestamp(0)
+  updated_at DateTime?     @default(now()) @updatedAt @db.Timestamp(0)
+  questions  Question[]
+  attempts   QuizAttempt[]
+  module     Module?       @relation(fields: [module_id], references: [id], onUpdate: NoAction, map: "quizzes_ibfk_1")
+
+  @@index([module_id], map: "module_id")
+  @@map("quizzes")
+}
+
+model Question {
+  id         Int       @id @default(autoincrement())
+  quiz_id    Int
+  question   String    @db.Text
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  answers    Answer[]
+  options    Option[]
+  quiz       Quiz      @relation(fields: [quiz_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "questions_ibfk_1")
+
+  @@index([quiz_id], map: "quiz_id")
+  @@map("questions")
+}
+
+model Option {
+  id          Int       @id @default(autoincrement())
+  question_id Int
+  option_text String    @db.Text
+  is_correct  Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  answers     Answer[]
+  question    Question  @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "options_ibfk_1")
+
+  @@index([question_id], map: "question_id")
+  @@map("options")
+}
+
+model QuizAttempt {
+  id           Int       @id @default(autoincrement())
+  student_id   Int
+  quiz_id      Int
+  score        Int?      @default(0)
+  started_at   DateTime? @default(now()) @db.Timestamp(0)
+  completed_at DateTime? @db.Timestamp(0)
+  answers      Answer[]
+  student      Siswa     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "quiz_attempts_ibfk_1")
+  quiz         Quiz      @relation(fields: [quiz_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "quiz_attempts_ibfk_2")
+
+  @@index([quiz_id], map: "quiz_id")
+  @@index([student_id], map: "student_id")
+  @@map("quiz_attempts")
+}
+
+model Answer {
+  id          Int         @id @default(autoincrement())
+  attempt_id  Int
+  question_id Int
+  option_id   Int
+  created_at  DateTime?   @default(now()) @db.Timestamp(0)
+  attempt     QuizAttempt @relation(fields: [attempt_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "answers_ibfk_1")
+  question    Question    @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "answers_ibfk_2")
+  option      Option      @relation(fields: [option_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "answers_ibfk_3")
+
+  @@index([attempt_id], map: "attempt_id")
+  @@index([option_id], map: "option_id")
+  @@index([question_id], map: "question_id")
+  @@map("answers")
+}
+
+model MentalJournal {
+  id          Int       @id @default(autoincrement())
+  student_id  Int
+  logged_at   DateTime? @default(now()) @db.Timestamp(0)
+  mood_score  Int
+  activities  String?   @db.Text
+  notes       String?   @db.Text
+  ai_feedback String?   @db.Text
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  student     Siswa     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mental_journals_ibfk_1")
+
+  @@index([student_id], map: "student_id")
+  @@map("mental_journals")
+}
+
+model MentalInsight {
+  id              Int       @id @default(autoincrement())
+  student_id      Int
+  period          String    @db.VarChar(50)
+  mental_level    String    @db.VarChar(50)
+  module_progress Int?      @default(0)
+  recommendations String?   @db.Text
+  created_at      DateTime? @default(now()) @db.Timestamp(0)
+  updated_at      DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  student         Siswa     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mental_insights_ibfk_1")
+
+  @@index([student_id], map: "student_id")
+  @@map("mental_insights")
+}
+
+model MentalIntervention {
+  id          Int                 @id @default(autoincrement())
+  student_id  Int
+  name        String              @db.VarChar(255)
+  description String?             @db.Text
+  status      InterventionStatus? @default(pending)
+  assigned_by Int?
+  started_at  DateTime?           @db.Timestamp(0)
+  ended_at    DateTime?           @db.Timestamp(0)
+  created_at  DateTime?           @default(now()) @db.Timestamp(0)
+  updated_at  DateTime?           @default(now()) @updatedAt @db.Timestamp(0)
+  student     Siswa               @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mental_interventions_ibfk_1")
+  assignedBy  User?               @relation("AssignedBy", fields: [assigned_by], references: [id], onUpdate: NoAction, map: "mental_interventions_ibfk_2")
+
+  @@index([assigned_by], map: "assigned_by")
+  @@index([student_id], map: "student_id")
+  @@map("mental_interventions")
+}
+
+model AIFeedback {
+  id         Int       @id @default(autoincrement())
+  student_id Int
+  module_id  Int?
+  feedback   String    @db.Text
+  category   String?   @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  student    Siswa     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "ai_feedbacks_ibfk_1")
+  module     Module?   @relation(fields: [module_id], references: [id], onUpdate: NoAction, map: "ai_feedbacks_ibfk_2")
+
+  @@index([module_id], map: "module_id")
+  @@index([student_id], map: "student_id")
+  @@map("ai_feedbacks")
+}
+
+model Badge {
+  id             Int            @id @default(autoincrement())
+  name           String         @unique(map: "name") @db.VarChar(100)
+  description    String?        @db.Text
+  image_url      String?        @db.VarChar(255)
+  created_at     DateTime?      @default(now()) @db.Timestamp(0)
+  updated_at     DateTime?      @default(now()) @updatedAt @db.Timestamp(0)
+  student_badges StudentBadge[]
+
+  @@map("badges")
+}
+
+model StudentBadge {
+  id         Int       @id @default(autoincrement())
+  student_id Int
+  badge_id   Int
+  awarded_at DateTime? @default(now()) @db.Timestamp(0)
+  student    Siswa     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "student_badges_ibfk_1")
+  badge      Badge     @relation(fields: [badge_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "student_badges_ibfk_2")
+
+  @@index([badge_id], map: "badge_id")
+  @@index([student_id], map: "student_id")
+  @@map("student_badges")
+}
+
+enum Role {
+  student
+  teacher
+  admin
+}
+
+enum QuizType {
+  pretest
+  posttest
+}
+
+enum InterventionStatus {
+  pending
+  active
+  completed
+  cancelled
+}
+
+model CompletedModule {
+  id           Int      @id @default(autoincrement())
+  student_id   Int
+  student      Siswa    @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  module_id    Int
+  module       Module   @relation(fields: [module_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  completed_at DateTime @default(now())
+
+  @@unique([student_id, module_id])
+  @@map("completed_modules")
+}
