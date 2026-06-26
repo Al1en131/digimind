@@ -95,7 +95,7 @@ export async function POST(request: Request) {
           completed_at: { not: null }
         }
       });
-      hasCompletedPretest = !!pretestAttempt;
+      hasCompletedPretest = !!pretestAttempt || !!user.student.literacy_level;
     }
 
     // Sign JWT Token

@@ -24,7 +24,7 @@ export async function GET() {
           }
         });
 
-        if (pretestAttempt) {
+        if (pretestAttempt || student.literacy_level) {
           return NextResponse.json({
             success: true,
             hasCompletedPretest: true
