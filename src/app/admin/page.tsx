@@ -32,7 +32,7 @@ export default function AdminLoginPage() {
       }
 
       setSuccess(data.message);
-      
+
       // Store user details in localStorage (temporary UI-only helper)
       localStorage.setItem("user", JSON.stringify(data.user));
 
@@ -40,7 +40,6 @@ export default function AdminLoginPage() {
       setTimeout(() => {
         router.push("/admin/dashboard");
       }, 1500);
-
     } catch (err: any) {
       setError(err.message || "Koneksi ke server gagal.");
     } finally {
@@ -50,10 +49,9 @@ export default function AdminLoginPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#070b19] px-4 py-12 font-mono text-emerald-400">
-      
       {/* Background Matrix-like Subtle Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" />
-      
+
       {/* Tech corner lines */}
       <div className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2 border-emerald-500/30 pointer-events-none" />
       <div className="absolute top-8 right-8 w-16 h-16 border-t-2 border-r-2 border-emerald-500/30 pointer-events-none" />
@@ -62,23 +60,21 @@ export default function AdminLoginPage() {
 
       {/* Main Container */}
       <div className="w-full max-w-md z-10">
-        
         {/* Terminal Header */}
         <div className="mb-6 text-center">
-          <div className="inline-block px-3 py-1 mb-2 text-2xs uppercase tracking-widest border border-emerald-500/30 rounded-md bg-emerald-950/20 animate-pulse">
+          {/* <div className="inline-block px-3 py-1 mb-2 text-2xs uppercase tracking-widest border border-emerald-500/30 rounded-md bg-emerald-950/20 animate-pulse">
             Secure Access Portal
-          </div>
+          </div> */}
           <h1 className="text-2xl font-extrabold tracking-widest text-white uppercase">
-            Digimind // Admin
+            Admin Login
           </h1>
-          <p className="mt-1 text-2xs text-emerald-500/60 uppercase">
+          {/* <p className="mt-1 text-2xs text-emerald-500/60 uppercase">
             Authorized Personnel Only
-          </p>
+          </p> */}
         </div>
 
         {/* Cyberpunk Card */}
         <div className="rounded-xl border border-emerald-500/20 bg-slate-950/60 p-8 shadow-[0_0_50px_rgba(16,185,129,0.05)] backdrop-blur-md">
-          
           <div className="flex items-center gap-2 mb-6 pb-4 border-b border-emerald-500/10">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
             <h2 className="text-sm font-semibold tracking-wider uppercase text-emerald-300">
@@ -102,7 +98,7 @@ export default function AdminLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-3xs font-semibold uppercase tracking-widest text-emerald-500/70 mb-2">
-                &gt; Identifier_ (Email / Username)
+                Email / Username
               </label>
               <input
                 type="text"
@@ -116,7 +112,7 @@ export default function AdminLoginPage() {
 
             <div>
               <label className="block text-3xs font-semibold uppercase tracking-widest text-emerald-500/70 mb-2">
-                &gt; Security_Key_ (Password)
+                Password
               </label>
               <input
                 type="password"
@@ -135,14 +131,29 @@ export default function AdminLoginPage() {
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  <svg
+                    className="h-4 w-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
                   </svg>
                   Establishing Connection...
                 </span>
               ) : (
-                "Initialize Session"
+                "Login"
               )}
             </button>
           </form>
@@ -156,9 +167,7 @@ export default function AdminLoginPage() {
               &lt; Return to Standard Portal
             </Link>
           </div>
-
         </div>
-
       </div>
     </div>
   );

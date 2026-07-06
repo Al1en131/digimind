@@ -29,6 +29,7 @@ model SchoolClass {
   created_at DateTime? @default(now()) @db.Timestamp(0)
   updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
   students   Siswa[]
+  subjects   Subject[]
 
   @@map("classes")
 }
@@ -55,6 +56,7 @@ model Siswa {
   quiz_attempts     QuizAttempt[]
   student_badges    StudentBadge[]
   completed_modules CompletedModule[]
+  chat_messages     ChatMessage[]
   user              User                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "students_ibfk_1")
   class             SchoolClass          @relation(fields: [class_id], references: [id], onUpdate: NoAction, map: "students_ibfk_2")
 
@@ -70,9 +72,12 @@ model Guru {
   specialization String?   @db.VarChar(255)
   position       String?   @db.VarChar(150)
   phone_number   String?   @db.VarChar(20)
+  type           TeacherType @default(subject)
   created_at     DateTime? @default(now()) @db.Timestamp(0)
   updated_at     DateTime? @default(now()) @updatedAt @db.Timestamp(0)
   user           User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "teachers_ibfk_1")
+  subjects       Subject[]
+  chat_messages  ChatMessage[]
 
   @@map("teachers")
 }
@@ -125,9 +130,13 @@ model Module {
   level        Level             @relation(fields: [level_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "modules_ibfk_2")
   quizzes      Quiz[]
   completed_by CompletedModule[]
+  subject_id   Int?
+  subject      Subject?          @relation(fields: [subject_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "modules_ibfk_3")
+  badges       Badge[]
 
   @@index([category_id], map: "category_id")
   @@index([level_id], map: "level_id")
+  @@index([subject_id], map: "subject_id")
   @@map("modules")
 }
 
@@ -276,10 +285,13 @@ model Badge {
   name           String         @unique(map: "name") @db.VarChar(100)
   description    String?        @db.Text
   image_url      String?        @db.VarChar(255)
+  module_id      Int?
+  module         Module?        @relation(fields: [module_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "badges_ibfk_1")
   created_at     DateTime?      @default(now()) @db.Timestamp(0)
   updated_at     DateTime?      @default(now()) @updatedAt @db.Timestamp(0)
   student_badges StudentBadge[]
 
+  @@index([module_id], map: "module_id")
   @@map("badges")
 }
 
@@ -324,4 +336,39 @@ model CompletedModule {
 
   @@unique([student_id, module_id])
   @@map("completed_modules")
+}
+
+model Subject {
+  id         Int         @id @default(autoincrement())
+  name       String      @db.VarChar(255)
+  class_id   Int
+  teacher_id Int?
+  class      SchoolClass @relation(fields: [class_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "subjects_ibfk_1")
+  teacher    Guru?       @relation(fields: [teacher_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "subjects_ibfk_2")
+  modules    Module[]
+
+  @@index([class_id], map: "class_id")
+  @@index([teacher_id], map: "teacher_id")
+  @@map("subjects")
+}
+
+model ChatMessage {
+  id          Int      @id @default(autoincrement())
+  student_id  Int
+  teacher_id  Int
+  message     String   @db.Text
+  sender      String   @db.VarChar(50) // "student" atau "teacher"
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+
+  student     Siswa    @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_messages_ibfk_1")
+  teacher     Guru     @relation(fields: [teacher_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "chat_messages_ibfk_2")
+
+  @@index([student_id], map: "student_id")
+  @@index([teacher_id], map: "teacher_id")
+  @@map("chat_messages")
+}
+
+enum TeacherType {
+  subject
+  bk
 }

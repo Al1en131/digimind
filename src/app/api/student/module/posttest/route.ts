@@ -167,6 +167,22 @@ export async function POST(request: Request) {
             }
           }
         }
+
+        // Award dynamically linked badge for subject module if exists
+        const linkedBadge = await prisma.badge.findFirst({
+          where: { module_id: moduleIdInt }
+        });
+        if (linkedBadge) {
+          const hasBadge = await prisma.studentBadge.findFirst({
+            where: { student_id: student.id, badge_id: linkedBadge.id }
+          });
+          if (!hasBadge) {
+            await prisma.studentBadge.create({
+              data: { student_id: student.id, badge_id: linkedBadge.id }
+            });
+            badgeAwarded = linkedBadge.name;
+          }
+        }
       }
     }
 

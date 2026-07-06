@@ -32,6 +32,40 @@ export async function GET() {
       seededClasses.push(existingClass);
     }
 
+    // 1.5. Seed Default Subjects for Classes
+    for (const cls of seededClasses) {
+      const isScience = cls.major === "Science";
+      const subjectsForClass = [
+        "Matematika",
+        "Bahasa Indonesia",
+        "Bahasa Inggris",
+        "Pendidikan Pancasila",
+        "Sejarah",
+        "Seni Budaya",
+        "PJOK"
+      ];
+      if (isScience) {
+        subjectsForClass.push("Fisika", "Kimia", "Biologi");
+      } else {
+        subjectsForClass.push("Ekonomi", "Geografi", "Sosiologi");
+      }
+
+      for (const subName of subjectsForClass) {
+        const existingSub = await prisma.subject.findFirst({
+          where: { name: subName, class_id: cls.id }
+        });
+        if (!existingSub) {
+          await prisma.subject.create({
+            data: {
+              name: subName,
+              class_id: cls.id,
+              teacher_id: null
+            }
+          });
+        }
+      }
+    }
+
     // 2. Seed Default Admin User
     const adminUsername = "admin";
     const adminEmail = "admin@digimind.com";

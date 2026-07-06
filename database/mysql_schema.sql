@@ -253,3 +253,4 @@ CREATE TABLE IF NOT EXISTS student_badges (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (badge_id) REFERENCES badges(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+

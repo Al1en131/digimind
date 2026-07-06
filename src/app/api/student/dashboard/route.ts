@@ -40,6 +40,18 @@ export async function GET() {
       }, { status: 404 });
     }
 
+    // Check if student has completed the pretest
+    const pretestAttempt = await prisma.quizAttempt.findFirst({
+      where: {
+        student_id: student.id,
+        quiz: {
+          type: "pretest"
+        },
+        completed_at: { not: null }
+      }
+    });
+    const hasCompletedPretest = !!pretestAttempt || !!student.literacy_level;
+
     // Get matched level
     const studentLevelName = student.literacy_level || "Beginner";
     const level = await prisma.level.findFirst({
@@ -109,8 +121,29 @@ export async function GET() {
       student.student_badges = updatedBadges;
     }
 
+    const subjects = await prisma.subject.findMany({
+      where: { class_id: student.class_id },
+      include: {
+        teacher: true,
+        modules: {
+          include: {
+            quizzes: {
+              include: {
+                questions: {
+                  include: {
+                    options: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
     return NextResponse.json({
       success: true,
+      hasCompletedPretest,
       student: {
         id: student.id,
         name: student.name,
@@ -125,6 +158,7 @@ export async function GET() {
       },
       modules: levelModules,
       completedModuleIds,
+      subjects,
       badges: {
         all: allBadges,
         unlocked: student.student_badges.map(sb => sb.badge)

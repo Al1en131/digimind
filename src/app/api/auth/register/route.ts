@@ -93,15 +93,15 @@ export async function POST(request: Request) {
             class_id: parseInt(class_id),
             nis,
             name,
-            literacy_level: "Beginner", // default value
-            mental_level: "Stable",     // default value
+            literacy_level: null,
+            mental_level: null,
             risk_flag: false
           }
         });
       });
 
     } else if (role === "teacher") {
-      const { name, nip, specialization, position, phone_number } = body;
+      const { name, nip, specialization, position, phone_number, teacher_type, teacher_class_id, teacher_subject_id } = body;
       if (!name || !nip) {
         return NextResponse.json({
           success: false,
@@ -131,16 +131,24 @@ export async function POST(request: Request) {
           }
         });
 
-        await tx.guru.create({
+        const teacher = await tx.guru.create({
           data: {
             user_id: user.id,
             nip,
             name,
             specialization,
             position,
-            phone_number
+            phone_number,
+            type: teacher_type === "bk" ? "bk" : "subject"
           }
         });
+
+        if (teacher_type === "subject" && teacher_class_id && teacher_subject_id) {
+          await tx.subject.update({
+            where: { id: parseInt(teacher_subject_id) },
+            data: { teacher_id: teacher.id }
+          });
+        }
       });
     }
 

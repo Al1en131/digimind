@@ -81,6 +81,18 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
   // Fetch module and quiz on mount
   useEffect(() => {
+    // Client-side check to prevent direct access if pretest is not completed
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const userObj = JSON.parse(storedUser);
+        if (userObj.role === "student" && !userObj.hasCompletedPretest) {
+          router.push("/student/pretest");
+          return;
+        }
+      } catch {}
+    }
+
     async function loadModule() {
       try {
         const res = await fetch(`/api/student/module/${moduleId}`);
@@ -101,7 +113,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
       }
     }
     loadModule();
-  }, [moduleId]);
+  }, [moduleId, router]);
 
   // Handle option selection
   const handleSelectOption = (questionId: number, optionId: number) => {

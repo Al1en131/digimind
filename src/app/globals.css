@@ -8,8 +8,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-poppins);
+  --font-mono: var(--font-roboto);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +22,104 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
 }
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: 600;
+}
+
+strong,
+b {
+  font-weight: 600;
+}
+
+select,
+option {
+  background-color: #14101d;
+  color: white;
+}
+
+select:focus {
+  outline: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* .student-dashboard-page {
+  background: linear-gradient(135deg, #c4e2f5 0%, #eaf6ff 100%);
+  color: #0f3b5c;
+}
+
+.student-dashboard-page .text-zinc-100 {
+  color: #0f3b5c !important;
+}
+
+.student-dashboard-page .text-zinc-300 {
+  color: #2f5f7f !important;
+}
+
+.student-dashboard-page .text-zinc-400 {
+  color: #4f6f85 !important;
+}
+
+.student-dashboard-page .text-zinc-500 {
+  color: #5d7d95 !important;
+}
+
+.student-dashboard-page .text-zinc-600 {
+  color: #6d8ba2 !important;
+}
+
+.student-dashboard-page .text-white {
+  color: #0f3b5c !important;
+}
+
+.student-dashboard-page .border-white\/10,
+.student-dashboard-page .border-white\/5 {
+  border-color: rgba(21, 145, 220, 0.16) !important;
+}
+
+.student-dashboard-page [class*="bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+.student-dashboard-page .bg-violet-600,
+.student-dashboard-page .bg-violet-500,
+.student-dashboard-page .bg-violet-600\/10,
+.student-dashboard-page .bg-violet-950\/10 {
+  background-color: #1591dc !important;
+}
+
+.student-dashboard-page .from-violet-600 {
+  --tw-gradient-from: #1591dc !important;
+}
+
+.student-dashboard-page .to-indigo-600,
+.student-dashboard-page .to-indigo-500 {
+  --tw-gradient-to: #4fa9e6 !important;
+}
+
+.student-dashboard-page .text-violet-400,
+.student-dashboard-page .text-violet-300,
+.student-dashboard-page .text-indigo-300 {
+  color: #1591dc !important;
+}
+
+.student-dashboard-page .border-violet-500\/30,
+.student-dashboard-page .border-violet-500\/40 {
+  border-color: rgba(21, 145, 220, 0.35) !important;
+} */

@@ -8,6 +8,11 @@ interface ClassOption {
   id: number;
   name: string;
   major: string;
+  subjects?: {
+    id: number;
+    name: string;
+    teacher_id: number | null;
+  }[];
 }
 
 export default function RegisterPage() {
@@ -31,6 +36,9 @@ export default function RegisterPage() {
   const [specialization, setSpecialization] = useState("");
   const [position, setPosition] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [teacherType, setTeacherType] = useState<"subject" | "bk">("subject");
+  const [teacherClassId, setTeacherClassId] = useState("");
+  const [teacherSubjectId, setTeacherSubjectId] = useState("");
 
   // Status States
   const [loading, setLoading] = useState(false);
@@ -82,6 +90,11 @@ export default function RegisterPage() {
       payload.specialization = specialization;
       payload.position = position;
       payload.phone_number = phoneNumber;
+      payload.teacher_type = teacherType;
+      if (teacherType === "subject") {
+        payload.teacher_class_id = teacherClassId;
+        payload.teacher_subject_id = teacherSubjectId;
+      }
     }
 
     try {
@@ -110,6 +123,8 @@ export default function RegisterPage() {
       setSpecialization("");
       setPosition("");
       setPhoneNumber("");
+      setTeacherClassId("");
+      setTeacherSubjectId("");
 
       // Redirect to login page after 2 seconds
       setTimeout(() => {
@@ -306,6 +321,66 @@ export default function RegisterPage() {
               </div>
             ) : (
               <div className="pt-4 border-t border-white/5 space-y-5 animate-fadeIn">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                    Tipe Guru
+                  </label>
+                  <select
+                    value={teacherType}
+                    onChange={(e) => setTeacherType(e.target.value as "subject" | "bk")}
+                    className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                  >
+                    <option value="subject">Guru Mata Pelajaran</option>
+                    <option value="bk">Guru Bimbingan Konseling (BK)</option>
+                  </select>
+                </div>
+
+                {teacherType === "subject" && (
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 animate-fadeIn">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                        Kelas Awal yang Diampu
+                      </label>
+                      <select
+                        value={teacherClassId}
+                        onChange={(e) => {
+                          setTeacherClassId(e.target.value);
+                          setTeacherSubjectId(""); // Reset subject when class changes
+                        }}
+                        required
+                        className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
+                      >
+                        <option value="" className="text-zinc-600">-- Pilih Kelas --</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.major})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+                        Mata Pelajaran Awal
+                      </label>
+                      <select
+                        value={teacherSubjectId}
+                        onChange={(e) => setTeacherSubjectId(e.target.value)}
+                        required
+                        disabled={!teacherClassId}
+                        className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
+                      >
+                        <option value="" className="text-zinc-600">-- Pilih Mata Pelajaran --</option>
+                        {(classes.find(c => c.id.toString() === teacherClassId)?.subjects || []).map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name} {sub.teacher_id ? "(Sudah ada guru)" : "(Tersedia)"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">

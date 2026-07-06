@@ -4,6 +4,13 @@ import { prisma } from "@/lib/db";
 export async function GET() {
   try {
     const classes = await prisma.schoolClass.findMany({
+      include: {
+        subjects: {
+          orderBy: {
+            name: "asc",
+          },
+        },
+      },
       orderBy: {
         name: "asc",
       },

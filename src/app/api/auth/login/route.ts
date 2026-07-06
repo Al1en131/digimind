@@ -98,6 +98,8 @@ export async function POST(request: Request) {
       hasCompletedPretest = !!pretestAttempt || !!user.student.literacy_level;
     }
 
+    const teacherType = user.role === "teacher" ? user.teacher?.type : null;
+
     // Sign JWT Token
     const token = signJWT({
       userId: user.id,
@@ -105,7 +107,8 @@ export async function POST(request: Request) {
       email: user.email,
       role: user.role,
       name: profileName,
-      hasCompletedPretest
+      hasCompletedPretest,
+      teacherType
     });
 
     // Set secure HTTPOnly cookie
@@ -126,7 +129,8 @@ export async function POST(request: Request) {
         email: user.email,
         role: user.role,
         name: profileName,
-        hasCompletedPretest
+        hasCompletedPretest,
+        teacherType
       }
     });
 
