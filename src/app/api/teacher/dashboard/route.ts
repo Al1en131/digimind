@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
+import { encryptSensitiveText, decryptSensitiveText } from "@/lib/encryption";
 
 function parseScreenTime(activities: string | null | undefined): number {
   if (!activities) return 0;
@@ -56,7 +57,7 @@ export async function GET() {
 
     const teacher = await prisma.guru.findUnique({
       where: { user_id: decoded.userId },
-      include: { user: true },
+      include: { user: true, class: true },
     });
 
     if (!teacher) {
@@ -67,8 +68,26 @@ export async function GET() {
     }
 
     let students = [];
+    let teacherModuleIds: number[] = [];
+
+    const teacherSubjects = await prisma.subject.findMany({
+      where: teacher.type === "wali_kelas" && teacher.class_id
+        ? { class_id: teacher.class_id }
+        : { teacher_id: teacher.id },
+      include: {
+        class: true,
+        teacher: {
+          include: {
+            user: { select: { email: true } }
+          }
+        },
+        modules: { select: { id: true, title: true } }
+      }
+    });
+
     if (teacher.type === "bk") {
       students = await prisma.siswa.findMany({
+        where: teacher.class_id ? { class_id: teacher.class_id } : undefined,
         include: {
           class: true,
           mental_journals: {
@@ -76,17 +95,45 @@ export async function GET() {
             take: 5,
           },
           completed_modules: true,
+          module_progresses: true,
           interventions: {
             orderBy: { created_at: "desc" },
             take: 5,
           },
+          quiz_attempts: {
+            orderBy: { completed_at: "desc" },
+            include: {
+              quiz: {
+                include: {
+                  module: {
+                    include: {
+                      subject: true
+                    }
+                  },
+                  subject: true
+                }
+              },
+              answers: {
+                include: {
+                  question: {
+                    include: {
+                      options: true,
+                    },
+                  },
+                  option: true,
+                },
+              },
+            }
+          }
         },
       });
     } else {
-      const subjects = await prisma.subject.findMany({
-        where: { teacher_id: teacher.id }
-      });
-      const classIds = Array.from(new Set(subjects.map(s => s.class_id)));
+      teacherModuleIds = teacherSubjects.flatMap(s => s.modules.map(m => m.id));
+
+      const classIds = teacher.type === "wali_kelas" && teacher.class_id
+        ? [teacher.class_id]
+        : Array.from(new Set(teacherSubjects.map(s => s.class_id)));
+
       students = await prisma.siswa.findMany({
         where: {
           class_id: { in: classIds }
@@ -98,10 +145,36 @@ export async function GET() {
             take: 5,
           },
           completed_modules: true,
+          module_progresses: true,
           interventions: {
             orderBy: { created_at: "desc" },
             take: 5,
           },
+          quiz_attempts: {
+            orderBy: { completed_at: "desc" },
+            include: {
+              quiz: {
+                include: {
+                  module: {
+                    include: {
+                      subject: true
+                    }
+                  },
+                  subject: true
+                }
+              },
+              answers: {
+                include: {
+                  question: {
+                    include: {
+                      options: true,
+                    },
+                  },
+                  option: true,
+                },
+              },
+            }
+          }
         },
       });
     }
@@ -134,25 +207,26 @@ export async function GET() {
 
     const literacyModuleIds = new Set(literacyModules.map((module) => module.id));
 
-    // Fetch all subject modules to group them by class
-    const allSubjectsWithModules = await prisma.subject.findMany({
+    // Fetch all modules with subject details for detailed student progress
+    const allModulesWithSubject = await prisma.module.findMany({
       include: {
-        modules: {
-          select: { id: true }
+        subject: {
+          include: { class: true }
         }
       }
     });
 
     const classSubjectModuleIdsMap = new Map();
-    for (const sub of allSubjectsWithModules) {
-      if (!classSubjectModuleIdsMap.has(sub.class_id)) {
-        classSubjectModuleIdsMap.set(sub.class_id, []);
-      }
-      const list = classSubjectModuleIdsMap.get(sub.class_id);
-      for (const mod of sub.modules) {
-        list.push(mod.id);
+    for (const mod of allModulesWithSubject) {
+      if (mod.subject_id && mod.subject?.class_id) {
+        if (!classSubjectModuleIdsMap.has(mod.subject.class_id)) {
+          classSubjectModuleIdsMap.set(mod.subject.class_id, []);
+        }
+        classSubjectModuleIdsMap.get(mod.subject.class_id).push(mod.id);
       }
     }
+
+    const teacherSubjectIdsSet = new Set(teacherSubjects.map((s) => s.id));
 
     const studentSummaries = students.map((student) => {
       const recentJournals = student.mental_journals || [];
@@ -174,19 +248,127 @@ export async function GET() {
         ? Math.round((completedLiteracyModules / literacyModules.length) * 100)
         : 0;
 
-      // 3. Subject Modules progress
-      const studentClassSubjectModuleIds = classSubjectModuleIdsMap.get(student.class_id) || [];
-      const completedSubjectModules = student.completed_modules.filter((completedModule) => studentClassSubjectModuleIds.includes(completedModule.module_id)).length;
-      const subjectProgress = studentClassSubjectModuleIds.length > 0
-        ? Math.round((completedSubjectModules / studentClassSubjectModuleIds.length) * 100)
+      // 3. Subject Modules progress (Filtered ONLY for teacher's subject(s) in this student's class)
+      const moduleProgressesList = allModulesWithSubject
+        .filter((mod) => {
+          if (teacher.type === "bk") {
+            return mod.subject?.class_id === student.class_id;
+          }
+          if (teacherSubjectIdsSet.size > 0) {
+            return mod.subject_id ? teacherSubjectIdsSet.has(mod.subject_id) && mod.subject?.class_id === student.class_id : false;
+          }
+          return mod.subject ? mod.subject.class_id === student.class_id : false;
+        })
+        .map((mod) => {
+          const isCompleted = student.completed_modules.some((c) => c.module_id === mod.id);
+          const progRec = student.module_progresses.find((p) => p.module_id === mod.id);
+          const progress = isCompleted ? 100 : (progRec ? progRec.progress : 0);
+          return {
+            moduleId: mod.id,
+            moduleTitle: mod.title,
+            subjectId: mod.subject_id,
+            subjectName: mod.subject?.name || "Umum",
+            progress,
+            isCompleted,
+          };
+        });
+
+      // Calculate subjectProgress as exact average of moduleProgressesList to avoid any discrepancy
+      const totalModProgSum = moduleProgressesList.reduce((sum, m) => sum + m.progress, 0);
+      const subjectProgress = moduleProgressesList.length > 0
+        ? Math.round(totalModProgSum / moduleProgressesList.length)
         : 0;
+
+      // Format Pretests (Excluding Screening / Mental Pretests)
+      const pretests = student.quiz_attempts
+        .filter((a) => {
+          if (a.quiz.type !== "pretest") return false;
+          const titleLower = (a.quiz.title || "").toLowerCase();
+          const subjectNameLower = (a.quiz.subject?.name || "").toLowerCase();
+          const isScreening =
+            titleLower.includes("screening") ||
+            titleLower.includes("skrining") ||
+            titleLower.includes("mental") ||
+            subjectNameLower.includes("mental") ||
+            !a.quiz.subject_id;
+          return !isScreening;
+        })
+        .map((a) => ({
+          id: a.id,
+          quizId: a.quiz_id,
+          title: a.quiz.title,
+          subjectId: a.quiz.subject_id,
+          subjectName: a.quiz.subject?.name || "Pretest",
+          score: a.score,
+          completedAt: a.completed_at
+            ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "-",
+          answers: a.answers.map((ans) => {
+            const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+            return {
+              id: ans.id,
+              question: ans.question.question,
+              selectedOption: ans.option.option_text,
+              isCorrect: ans.option.is_correct ?? false,
+              correctOption: correctOpt ? correctOpt.option_text : null,
+            };
+          }),
+        }));
+
+      // Format Posttests (Keep ONLY the LATEST attempt per module)
+      const latestPosttestsMap = new Map();
+      student.quiz_attempts
+        .filter((a) => a.quiz.type === "posttest")
+        .forEach((a) => {
+          const key = a.quiz.module_id || a.quiz_id;
+          if (!latestPosttestsMap.has(key)) {
+            latestPosttestsMap.set(key, {
+              id: a.id,
+              quizId: a.quiz_id,
+              title: a.quiz.title,
+              moduleId: a.quiz.module_id,
+              moduleTitle: a.quiz.module?.title || a.quiz.title,
+              subjectId: a.quiz.module?.subject_id || a.quiz.subject_id,
+              subjectName: a.quiz.module?.subject?.name || a.quiz.subject?.name || "Modul Pelajaran",
+              score: a.score,
+              completedAt: a.completed_at
+                ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "-",
+              answers: a.answers.map((ans) => {
+                const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+                return {
+                  id: ans.id,
+                  question: ans.question.question,
+                  selectedOption: ans.option.option_text,
+                  isCorrect: ans.option.is_correct ?? false,
+                  correctOption: correctOpt ? correctOpt.option_text : null,
+                };
+              }),
+            });
+          }
+        });
+      const posttests = Array.from(latestPosttestsMap.values());
 
       const riskFlag = Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7;
       const mentalStatus = student.mental_level || (riskFlag ? "Perlu Pendampingan" : averageMood >= 4 ? "Baik" : averageMood === 3 ? "Waspada" : "Perlu Pendampingan");
 
       return {
         id: student.id,
+        nis: student.nis || "-",
         name: student.name,
+        classId: student.class_id,
         className: student.class.name,
         literacyProgress,
         mentalHealthProgress,
@@ -202,10 +384,13 @@ export async function GET() {
         latestJournal: latestJournal
           ? {
               moodScore: latestJournal.mood_score,
-              activities: latestJournal.activities,
-              aiFeedback: latestJournal.ai_feedback,
+              activities: decryptSensitiveText(latestJournal.activities),
+              aiFeedback: decryptSensitiveText(latestJournal.ai_feedback),
             }
           : null,
+        pretests,
+        posttests,
+        moduleProgressesList,
       };
     });
 
@@ -232,7 +417,7 @@ export async function GET() {
       (student.interventions || []).map((intervention) => ({
         id: intervention.id,
         studentName: student.name,
-        note: intervention.description || intervention.name,
+        note: decryptSensitiveText(intervention.description) || decryptSensitiveText(intervention.name),
         status: normalizeStatus(intervention.status || null),
         updatedAt: intervention.updated_at
           ? new Date(intervention.updated_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
@@ -248,6 +433,10 @@ export async function GET() {
       `Intervensi aktif saat ini sebanyak ${interventions.filter((item) => item.status === "Aktif").length} catatan.`,
     ];
 
+    const teacherClassesList = Array.from(
+      new Map(teacherSubjects.map((s) => [s.class.id, s.class])).values()
+    );
+
     return NextResponse.json({
       success: true,
       teacher: {
@@ -256,11 +445,41 @@ export async function GET() {
         nip: teacher.nip,
         specialization: teacher.specialization || "Guru",
         position: teacher.position || (teacher.type === "bk" ? "Guru Bimbingan Konseling" : "Guru Mata Pelajaran"),
+        phone_number: teacher.phone_number || "",
         type: teacher.type,
+        class_id: teacher.class_id,
+        assignedClass: teacher.class ? {
+          id: teacher.class.id,
+          name: teacher.class.name,
+          major: teacher.class.major,
+        } : null,
+        subjects: teacherSubjects.map((s) => ({
+          id: s.id,
+          name: s.name,
+          classId: s.class_id,
+          className: s.class.name,
+          classMajor: s.class.major,
+          assignedTeacher: s.teacher
+            ? {
+                id: s.teacher.id,
+                name: s.teacher.name,
+                nip: s.teacher.nip || "-",
+                specialization: s.teacher.specialization || "-",
+                position: s.teacher.position || "-",
+                phone_number: s.teacher.phone_number || "-",
+                email: s.teacher.user?.email || "-",
+              }
+            : null,
+        })),
+        classes: teacherClassesList.map((c) => ({
+          id: c.id,
+          name: c.name,
+          major: c.major,
+        })),
       },
       classSummary: {
         totalStudents: students.length,
-        averageProgress: averageLiteracyProgress,
+        averageProgress: averageSubjectProgress,
         averageMood,
         averageMentalHealthProgress,
         averageLiteracyProgress,
@@ -334,8 +553,8 @@ export async function POST(request: Request) {
     const intervention = await prisma.mentalIntervention.create({
       data: {
         student_id: studentId,
-        name: title,
-        description,
+        name: encryptSensitiveText(title) || title,
+        description: encryptSensitiveText(description) || description,
         status,
         assigned_by: teacher?.user?.id ?? null,
         started_at: status === "active" ? new Date() : null,
@@ -348,7 +567,7 @@ export async function POST(request: Request) {
       intervention: {
         id: intervention.id,
         studentName: student.name,
-        note: intervention.description || intervention.name,
+        note: decryptSensitiveText(intervention.description) || decryptSensitiveText(intervention.name),
         status: normalizeStatus(intervention.status || null),
         updatedAt: intervention.updated_at
           ? new Date(intervention.updated_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })

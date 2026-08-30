@@ -3,69 +3,6 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
 
-// Helper to determine points (1 to 4) for option text dynamically
-function getOptionPoints(text: string): number {
-  const clean = text.toLowerCase();
-  
-  // 1-Point Options (Least literate / High-risk mental health indicator)
-  if (
-    clean.includes("langsung percaya") || 
-    clean.includes("langsung meneruskan") || 
-    clean.includes("kata sandi sederhana") || 
-    clean.includes("tidak pernah") || 
-    clean.includes("diam saja") || 
-    clean.includes("langsung klik link") ||
-    clean.includes("langsung login akun bank") ||
-    clean.includes("tidak penting, semua informasi") ||
-    clean.includes(">8 jam") || 
-    clean.includes("cemas/khawatir") || 
-    clean.includes("sering membandingkan diri") || 
-    clean.includes("terus scrolling") ||
-    clean.includes("selalu merasa cemas") ||
-    clean.includes("sangat terganggu")
-  ) {
-    return 1;
-  }
-  
-  // 2-Point Options (Mild negative behavior)
-  if (
-    clean.includes("membandingkan dengan 1") || 
-    clean.includes("membaca saja") || 
-    clean.includes("1 password untuk semua") || 
-    clean.includes("kadang-kadang") || 
-    clean.includes("ikut menanggapi") || 
-    clean.includes("mengabaikannya tanpa melapor") ||
-    clean.includes("menggunakan sesuka hati") ||
-    clean.includes("hanya penting untuk tugas") ||
-    clean.includes("5–7 jam") || 
-    clean.includes("lelah/tidak fokus") || 
-    clean.includes("mengeluh ke teman") ||
-    clean.includes("sering merasa khawatir") ||
-    clean.includes("kadang-kadang sulit tidur")
-  ) {
-    return 2;
-  }
-  
-  // 3-Point Options (Moderate positive behavior)
-  if (
-    clean.includes("mengingatkan teman") || 
-    clean.includes("sering") || 
-    clean.includes("mengingatkan dengan cara") || 
-    clean.includes("menghapus email dan tidak") ||
-    clean.includes("hanya membuka media sosial") ||
-    clean.includes("agar data presentasi") ||
-    clean.includes("2–4 jam") || 
-    clean.includes("mencari bantuan") ||
-    clean.includes("kadang-kadang memikirkannya") ||
-    clean.includes("cukup baik karena dibatasi")
-  ) {
-    return 3;
-  }
-  
-  // 4-Point Options (Highly literate behavior / Stable mental health routine)
-  return 4; 
-}
-
 export async function POST(request: Request) {
   try {
     // 1. Authenticate student session
@@ -80,7 +17,6 @@ export async function POST(request: Request) {
       }, { status: 401 });
     }
 
-    // Find student profile
     const student = await prisma.siswa.findUnique({
       where: { user_id: decoded.userId }
     });
@@ -101,138 +37,214 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 3. Process quiz completion
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: parseInt(quizId) },
+      include: {
+        questions: {
+          include: {
+            options: true
+          }
+        }
+      }
+    });
+
+    if (!quiz) {
+      return NextResponse.json({
+        success: false,
+        message: "Kuis tidak ditemukan."
+      }, { status: 404 });
+    }
+
+    // 3. Process Quiz Attempt
     const result = await prisma.$transaction(async (tx) => {
-      // Create initial attempt
       const attempt = await tx.quizAttempt.create({
         data: {
           student_id: student.id,
-          quiz_id: parseInt(quizId),
+          quiz_id: quiz.id,
           score: 0,
         }
       });
 
-      let totalPoints = 0;
-      let maxPointsPossible = 0;
-      let literacyPoints = 0;
-      let mentalPoints = 0;
-      let literacyQuestionsCount = 0;
-      let mentalQuestionsCount = 0;
+      // Fetch all valid option IDs for this quiz questions to verify foreign keys
+      const validOptionIds = new Set(
+        quiz.questions.flatMap(q => q.options.map(o => o.id))
+      );
 
-      // Write each answer and evaluate
+      // Save answer records safely
       for (const ans of answers) {
-        const option = await tx.option.findUnique({
-          where: { id: parseInt(ans.optionId) },
-          include: {
-            question: true
-          }
-        });
+        const optId = parseInt(ans.optionId);
+        const qId = parseInt(ans.questionId);
 
-        if (!option) continue;
+        if (!optId || !validOptionIds.has(optId)) continue;
 
-        // Save answer record
         await tx.answer.create({
           data: {
             attempt_id: attempt.id,
-            question_id: parseInt(ans.questionId),
-            option_id: parseInt(ans.optionId),
+            question_id: qId,
+            option_id: optId,
+          }
+        }).catch((err) => {
+          console.warn("Skipping invalid answer record:", err.message);
+        });
+      }
+
+      // CASE A: INITIAL PRETEST SRQ-29
+      if (!quiz.subject_id && !quiz.module_id) {
+        let yesCount1_20 = 0;
+        let yesQ21 = false;
+        let yesCount22_24 = 0;
+        let yesCount25_29 = 0;
+
+        // Map answers by question order / index
+        for (let i = 0; i < quiz.questions.length; i++) {
+          const q = quiz.questions[i];
+          const ans = answers.find((a: any) => parseInt(a.questionId) === q.id);
+          if (!ans) continue;
+
+          const selectedOption = q.options.find((o) => o.id === parseInt(ans.optionId));
+          const isYes = selectedOption?.option_text.toUpperCase().includes("Y");
+
+          const qNum = i + 1; // 1-indexed question number
+          if (isYes) {
+            if (qNum >= 1 && qNum <= 20) yesCount1_20++;
+            else if (qNum === 21) yesQ21 = true;
+            else if (qNum >= 22 && qNum <= 24) yesCount22_24++;
+            else if (qNum >= 25 && qNum <= 29) yesCount25_29++;
+          }
+        }
+
+        const emotionalDistress = yesCount1_20 >= 5;
+        const psychoticSymptoms = yesCount22_24 >= 1;
+        const ptsdSymptoms = yesCount25_29 >= 1;
+
+        const findings: string[] = [];
+        if (emotionalDistress) findings.push("Gangguan Mental Emosional (Cemas/Depresi)");
+        if (yesQ21) findings.push("Penggunaan Zat Psikoaktif / Narkoba");
+        if (psychoticSymptoms) findings.push("Gejala Gangguan Psikotik");
+        if (ptsdSymptoms) findings.push("Gejala Gangguan PTSD");
+
+        const riskFlag = findings.length > 0;
+        const rawMentalLevel = riskFlag ? findings.join(", ") : "Sehat & Stabil";
+        const mentalLevel = rawMentalLevel.slice(0, 250); // Ensure string does not exceed 255 chars
+        const literacyLevel = "Beginner"; // Starting literacy level
+
+        await tx.quizAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            score: 100,
+            completed_at: new Date()
           }
         });
 
-        // Determine points for the selected choice
-        const points = getOptionPoints(option.option_text);
-        
-        // Categorized calculation based on question content
-        const questionText = option.question.question.toLowerCase();
-        
-        if (questionText.includes("literasi")) {
-          // Questions relate to digital literacy
-          literacyPoints += points;
-          totalPoints += points;
-          maxPointsPossible += 4;
-          literacyQuestionsCount++;
-        } else if (questionText.includes("mental")) {
-          // Questions relate to mental health
-          mentalPoints += points;
-          totalPoints += points;
-          maxPointsPossible += 4;
-          mentalQuestionsCount++;
-        } else {
-          // Preference-based, no score impact
-          maxPointsPossible += 0;
-        }
+        await tx.siswa.update({
+          where: { id: student.id },
+          data: {
+            literacy_level: literacyLevel,
+            mental_level: mentalLevel,
+            adaptive_mental: findings.join(", ").slice(0, 250),
+            risk_flag: riskFlag
+          }
+        });
+
+        // Save historical record to mental_insights per monthly period (YYYY-MM)
+        const now = new Date();
+        const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        await tx.mentalInsight.create({
+          data: {
+            student_id: student.id,
+            period: currentPeriod,
+            mental_level: mentalLevel,
+            module_progress: student.module_progress || 0,
+            recommendations: findings.length > 0
+              ? `Terindikasi: ${findings.join("; ")}.`
+              : "Kondisi emosional dan psikologis sehat dan stabil."
+          }
+        });
+
+        return {
+          isSubjectPretest: false,
+          score: 100,
+          literacyLevel,
+          mentalLevel,
+          riskFlag,
+          findings,
+          summaryText: riskFlag
+            ? `Hasil SRQ-29 menunjukkan indikasi: ${findings.join("; ")}.`
+            : "Hasil SRQ-29 menunjukkan kondisi emosional dan mental Anda dalam keadaan sehat dan stabil."
+        };
       }
 
-      // Calculate final quiz score percentage (relative to max possible from graded questions)
-      const finalScore = maxPointsPossible > 0 ? Math.round((totalPoints / maxPointsPossible) * 100) : 100;
+      // CASE B: SUBJECT PRETEST
+      if (quiz.subject_id) {
+        let correctCount = 0;
+        const totalQ = quiz.questions.length;
 
-      // Update quiz attempt as completed
-      await tx.quizAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          score: finalScore,
-          completed_at: new Date()
+        for (const q of quiz.questions) {
+          const ans = answers.find((a: any) => parseInt(a.questionId) === q.id);
+          if (!ans) continue;
+          const selectedOption = q.options.find((o) => o.id === parseInt(ans.optionId));
+          if (selectedOption?.is_correct) {
+            correctCount++;
+          }
         }
-      });
 
-      // 4. CLASSIFICATION LOGIC (Percentage-based, fully flexible)
-      const maxLiteracyPoints = literacyQuestionsCount * 4;
-      const maxMentalPoints = mentalQuestionsCount * 4;
+        const score = totalQ > 0 ? Math.round((correctCount / totalQ) * 100) : 0;
 
-      // Literacy Level (Advanced >= 75%, Intermediate >= 50%)
-      let literacyLevel = "Beginner";
-      if (maxLiteracyPoints > 0) {
-        const literacyPercent = (literacyPoints / maxLiteracyPoints) * 100;
-        if (literacyPercent >= 75) {
-          literacyLevel = "Advanced";
-        } else if (literacyPercent >= 50) {
-          literacyLevel = "Intermediate";
-        }
+        let subjectLevel = "Beginner";
+        if (score >= 75) subjectLevel = "Advanced";
+        else if (score >= 45) subjectLevel = "Intermediate";
+
+        await tx.quizAttempt.update({
+          where: { id: attempt.id },
+          data: {
+            score,
+            completed_at: new Date()
+          }
+        });
+
+        await tx.studentSubjectLevel.upsert({
+          where: {
+            student_id_subject_id: {
+              student_id: student.id,
+              subject_id: quiz.subject_id
+            }
+          },
+          update: {
+            level_name: subjectLevel,
+            score
+          },
+          create: {
+            student_id: student.id,
+            subject_id: quiz.subject_id,
+            level_name: subjectLevel,
+            score
+          }
+        });
+
+        return {
+          isSubjectPretest: true,
+          subjectId: quiz.subject_id,
+          score,
+          subjectLevel,
+          summaryText: `Pretest selesai! Penempatan level Anda pada mata pelajaran ini adalah ${subjectLevel} (${score}%).`
+        };
       }
-
-      // Mental Level & Risk Flag (Stable >= 75%, Intermediate/Mild >= 50%)
-      let mentalLevel = "Stable";
-      let riskFlag = false;
-
-      if (maxMentalPoints > 0) {
-        const mentalPercent = (mentalPoints / maxMentalPoints) * 100;
-        if (mentalPercent >= 75) {
-          mentalLevel = "Stable";
-          riskFlag = false;
-        } else if (mentalPercent >= 50) {
-          mentalLevel = "Intermediate (Mild Stress)";
-          riskFlag = false;
-        } else {
-          mentalLevel = "Advanced (High Anxiety / High Risk)";
-          riskFlag = true; // Flags student for counselor bimbingan
-        }
-      }
-
-      // Update Student Profile
-      await tx.siswa.update({
-        where: { id: student.id },
-        data: {
-          literacy_level: literacyLevel,
-          mental_level: mentalLevel,
-          risk_flag: riskFlag
-        }
-      });
 
       return {
-        score: finalScore,
-        literacyLevel,
-        mentalLevel,
-        riskFlag
+        isSubjectPretest: false,
+        score: 100,
+        summaryText: "Kuis berhasil diselesaikan."
       };
     });
 
     return NextResponse.json({
       success: true,
-      message: "Pretest berhasil dikirim! Menyiapkan dashboard...",
+      message: "Jawaban berhasil disimpan!",
       result
     });
 
   } catch (error: any) {
+    console.error("Error submitting quiz:", error);
     return NextResponse.json({
       success: false,
       message: "Terjadi kesalahan sistem saat mengirim kuis.",

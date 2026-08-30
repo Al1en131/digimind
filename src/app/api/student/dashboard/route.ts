@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
+import { decryptSensitiveText } from "@/lib/encryption";
+import { calculateStudentModuleProgress } from "@/lib/student-progress";
 
 export async function GET() {
   try {
@@ -21,6 +23,11 @@ export async function GET() {
       include: {
         user: true,
         class: true,
+        subject_levels: {
+          include: {
+            subject: true
+          }
+        },
         student_badges: {
           include: {
             badge: true
@@ -40,33 +47,18 @@ export async function GET() {
       }, { status: 404 });
     }
 
-    // Check if student has completed the pretest
+    // Check if student has completed SRQ-29 initial pretest
     const pretestAttempt = await prisma.quizAttempt.findFirst({
       where: {
         student_id: student.id,
         quiz: {
-          type: "pretest"
+          type: "pretest",
+          subject_id: null
         },
         completed_at: { not: null }
       }
     });
     const hasCompletedPretest = !!pretestAttempt || !!student.literacy_level;
-
-    // Get matched level
-    const studentLevelName = student.literacy_level || "Beginner";
-    const level = await prisma.level.findFirst({
-      where: { name: studentLevelName }
-    });
-
-    // Fetch modules for this level
-    const levelModules = level
-      ? await prisma.module.findMany({
-          where: { level_id: level.id },
-          include: {
-            category: true
-          }
-        })
-      : [];
 
     // Get completed module IDs
     const completedRecords = await prisma.completedModule.findMany({
@@ -74,36 +66,113 @@ export async function GET() {
     });
     const completedModuleIds = completedRecords.map(r => r.module_id);
 
-    // Calculate progress
-    const totalModulesInLevel = levelModules.length;
-    const completedInLevel = levelModules.filter(m => completedModuleIds.includes(m.id)).length;
-    const progressPercent = totalModulesInLevel > 0 
-      ? Math.round((completedInLevel / totalModulesInLevel) * 100) 
-      : 0;
+    // Get all quiz attempts & dynamic scroll reading progress for student
+    const studentAttempts = await prisma.quizAttempt.findMany({
+      where: { student_id: student.id },
+      include: { quiz: true }
+    });
 
-    // Update progress in database if out of sync
-    if (student.module_progress !== progressPercent) {
-      await prisma.siswa.update({
-        where: { id: student.id },
-        data: { module_progress: progressPercent }
+    const studentModuleProgresses = await prisma.studentModuleProgress.findMany({
+      where: { student_id: student.id }
+    });
+
+    const computeModuleProgress = (modId: number) => {
+      if (completedModuleIds.includes(modId)) return 100;
+      const progressRecord = studentModuleProgresses.find(p => p.module_id === modId);
+      const savedReadingProg = progressRecord ? progressRecord.progress : 0;
+      const modAttempts = studentAttempts.filter(a => a.quiz.module_id === modId);
+      if (modAttempts.length > 0) {
+        const highestScore = Math.max(...modAttempts.map(a => a.score || 0));
+        return Math.max(savedReadingProg, highestScore);
+      }
+      return savedReadingProg;
+    };
+
+    // Get all system modules (Digital Literacy & Subject Modules)
+    const allSystemModules = await prisma.module.findMany({
+      include: { category: true, level: true }
+    });
+
+    const moduleProgressMap: Record<number, number> = {};
+    allSystemModules.forEach(m => {
+      moduleProgressMap[m.id] = computeModuleProgress(m.id);
+    });
+
+    // Fetch all Subjects for Student Class
+    const subjects = await prisma.subject.findMany({
+      where: {
+        class_id: student.class_id,
+        name: { not: "Literasi Digital" }
+      },
+      include: {
+        teacher: true,
+        quizzes: {
+          where: { type: "pretest" },
+          select: { id: true, title: true }
+        },
+        modules: {
+          include: {
+            quizzes: true,
+            level: true,
+            category: true
+          }
+        }
+      }
+    });
+
+    const subjectsFormatted = subjects.map(sub => {
+      const subjectLevelRecord = student.subject_levels.find(sl => sl.subject_id === sub.id);
+      const pretestQuiz = sub.quizzes[0] || null;
+
+      // Subject has completed pretest if record exists or student completed its pretest quiz
+      const hasCompletedSubjectPretest = !!subjectLevelRecord || (pretestQuiz ? studentAttempts.some(a => a.quiz_id === pretestQuiz.id && a.completed_at) : false);
+      const currentSubjectLevel = subjectLevelRecord?.level_name || "Belum Pretest";
+
+      let subModules = sub.modules.map((mod: any) => {
+        const prog = computeModuleProgress(mod.id);
+        moduleProgressMap[mod.id] = prog;
+        return {
+          ...mod,
+          progress: prog
+        };
       });
-      student.module_progress = progressPercent;
-    }
 
-    // Fetch all badges
+      // Filter subject modules according to student's assigned placement level
+      if (hasCompletedSubjectPretest && subModules.length > 0) {
+        const levelSpecificModules = subModules.filter((m: any) => !m.level || m.level.name === currentSubjectLevel);
+        if (levelSpecificModules.length > 0) {
+          subModules = levelSpecificModules;
+        }
+      }
+
+      return {
+        id: sub.id,
+        name: sub.name,
+        teacher: sub.teacher,
+        pretestQuizId: pretestQuiz?.id || null,
+        hasPretest: hasCompletedSubjectPretest,
+        level: currentSubjectLevel,
+        score: subjectLevelRecord?.score || 0,
+        modules: subModules
+      };
+    });
+
+    // Compute accurate overall progress across accessible modules for this student's class & level
+    const { progressPercent } = await calculateStudentModuleProgress(
+      student.id,
+      student.class_id,
+      student.literacy_level
+    );
+    student.module_progress = progressPercent;
+
+    // Badges & Leaderboard
     const allBadges = await prisma.badge.findMany();
-
-    // Fetch leaderboard rank (ordered by module_progress desc)
     const allStudents = await prisma.siswa.findMany({
-      orderBy: [
-        { module_progress: "desc" },
-        { name: "asc" }
-      ]
+      orderBy: [{ module_progress: "desc" }, { name: "asc" }]
     });
     const rank = allStudents.findIndex(s => s.id === student.id) + 1;
-    const totalStudents = allStudents.length;
 
-    // Auto-award Cyber Pioneer badge if completed pretest and doesn't have it
+    // Auto award Cyber Pioneer badge
     const cyberPioneerBadge = allBadges.find(b => b.name === "Cyber Pioneer");
     const hasCyberPioneer = student.student_badges.some(sb => sb.badge.name === "Cyber Pioneer");
     if (cyberPioneerBadge && !hasCyberPioneer) {
@@ -113,32 +182,89 @@ export async function GET() {
           badge_id: cyberPioneerBadge.id
         }
       });
-      // Re-fetch student badges to include it
-      const updatedBadges = await prisma.studentBadge.findMany({
-        where: { student_id: student.id },
-        include: { badge: true }
-      });
-      student.student_badges = updatedBadges;
     }
 
-    const subjects = await prisma.subject.findMany({
-      where: { class_id: student.class_id },
-      include: {
-        teacher: true,
-        modules: {
-          include: {
-            quizzes: {
-              include: {
-                questions: {
-                  include: {
-                    options: true
-                  }
-                }
+    // Check monthly screening attempts and mental insights history
+    const srqAttempts = await prisma.quizAttempt.findMany({
+      where: {
+        student_id: student.id,
+        quiz: {
+          type: "pretest",
+          subject_id: null
+        },
+        completed_at: { not: null }
+      },
+      orderBy: { completed_at: "desc" }
+    });
+
+    const currentDate = new Date();
+    const isCompletedThisMonth = srqAttempts.some(a => {
+      if (!a.completed_at) return false;
+      const d = new Date(a.completed_at);
+      return d.getMonth() === currentDate.getMonth() && d.getFullYear() === currentDate.getFullYear();
+    });
+
+    let mentalInsights = await prisma.mentalInsight.findMany({
+      where: { student_id: student.id },
+      orderBy: { created_at: "desc" }
+    });
+
+    // Auto-sync fallback: if student has completed SRQ-29/pretest but has no mental_insights record
+    if (mentalInsights.length === 0 && (hasCompletedPretest || srqAttempts.length > 0) && student.mental_level) {
+      const attemptDate = srqAttempts[0]?.completed_at ? new Date(srqAttempts[0].completed_at) : new Date();
+      const period = `${attemptDate.getFullYear()}-${String(attemptDate.getMonth() + 1).padStart(2, "0")}`;
+      const newInsight = await prisma.mentalInsight.create({
+        data: {
+          student_id: student.id,
+          period,
+          mental_level: student.mental_level,
+          module_progress: student.module_progress || 0,
+          recommendations: student.risk_flag
+            ? `Terindikasi: ${student.mental_level}.`
+            : "Kondisi emosional dan psikologis sehat dan stabil."
+        }
+      });
+      mentalInsights = [newInsight];
+    }
+
+    // Auto-award badges for any completed modules that haven't been awarded yet
+    const completedProgressesList = await prisma.completedModule.findMany({
+      where: {
+        student_id: student.id
+      },
+      select: { module_id: true }
+    });
+    const completedModIdsList = completedProgressesList.map(m => m.module_id);
+
+    if (completedModIdsList.length > 0) {
+      const moduleBadges = await prisma.badge.findMany({
+        where: {
+          module_id: { in: completedModIdsList }
+        }
+      });
+
+      for (const mb of moduleBadges) {
+        const alreadyAwarded = student.student_badges.some(sb => sb.badge_id === mb.id);
+        if (!alreadyAwarded) {
+          try {
+            await prisma.studentBadge.create({
+              data: {
+                student_id: student.id,
+                badge_id: mb.id
               }
-            }
-          }
+            });
+          } catch (e) {}
         }
       }
+    }
+
+    const latestStudentBadges = await prisma.studentBadge.findMany({
+      where: { student_id: student.id },
+      include: { badge: true }
+    });
+
+    const allClasses = await prisma.schoolClass.findMany({
+      orderBy: { name: "asc" }
     });
 
     return NextResponse.json({
@@ -149,24 +275,47 @@ export async function GET() {
         name: student.name,
         username: student.user.username,
         nis: student.nis,
+        class_id: student.class_id,
         class: student.class.name,
         avatar: student.avatar,
         literacy_level: student.literacy_level || "Beginner",
-        mental_level: student.mental_level || "Stable",
+        mental_level: student.mental_level || "Sehat & Stabil",
         module_progress: student.module_progress,
         risk_flag: student.risk_flag
       },
-      modules: levelModules,
+      allClasses: allClasses.map(c => ({
+        id: c.id,
+        name: c.name,
+        major: c.major
+      })),
+      monthlyScreening: {
+        isCompletedThisMonth,
+        lastCompletedAt: srqAttempts[0]?.completed_at || null,
+        history: mentalInsights.map(mi => ({
+          id: mi.id,
+          period: mi.period,
+          mental_level: mi.mental_level,
+          recommendations: mi.recommendations,
+          created_at: mi.created_at
+        }))
+      },
+      modules: [],
       completedModuleIds,
-      subjects,
+      moduleProgressMap,
+      subjects: subjectsFormatted,
       badges: {
         all: allBadges,
-        unlocked: student.student_badges.map(sb => sb.badge)
+        unlocked: latestStudentBadges.map(sb => sb.badge)
       },
-      journals: student.mental_journals,
+      journals: (student.mental_journals || []).map((j) => ({
+        ...j,
+        notes: decryptSensitiveText(j.notes),
+        activities: decryptSensitiveText(j.activities),
+        ai_feedback: decryptSensitiveText(j.ai_feedback),
+      })),
       leaderboard: {
         rank: rank > 0 ? rank : 1,
-        total: totalStudents > 0 ? totalStudents : 1
+        total: allStudents.length || 1
       }
     });
 

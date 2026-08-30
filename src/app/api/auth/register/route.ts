@@ -139,7 +139,8 @@ export async function POST(request: Request) {
             specialization,
             position,
             phone_number,
-            type: teacher_type === "bk" ? "bk" : "subject"
+            type: teacher_type === "bk" ? "bk" : teacher_type === "wali_kelas" ? "wali_kelas" : "subject",
+            class_id: teacher_class_id ? parseInt(teacher_class_id) : null,
           }
         });
 

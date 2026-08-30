@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
+import { calculateStudentModuleProgress } from "@/lib/student-progress";
 
 export async function POST(request: Request) {
   try {
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     const score = Math.round((correctCount / totalQuestions) * 100);
     const passed = score >= 70;
 
-    // Save quiz attempt
+    // Save quiz attempt and answers
     const attempt = await prisma.quizAttempt.create({
       data: {
         student_id: student.id,
@@ -79,6 +80,26 @@ export async function POST(request: Request) {
         completed_at: new Date()
       }
     });
+
+    // Save individual answer records for each question
+    for (const q of quizQuestions) {
+      const studentAns = answers.find(a => parseInt(a.questionId) === q.id);
+      if (studentAns) {
+        const optionIdInt = parseInt(studentAns.optionId);
+        const validOption = q.options.find(o => o.id === optionIdInt);
+        if (validOption) {
+          await prisma.answer.create({
+            data: {
+              attempt_id: attempt.id,
+              question_id: q.id,
+              option_id: validOption.id,
+            }
+          }).catch((err) => {
+            console.warn("Error creating answer record:", err.message);
+          });
+        }
+      }
+    }
 
     let progressPercent = student.module_progress;
     let badgeAwarded = null;
@@ -99,33 +120,13 @@ export async function POST(request: Request) {
         }
       });
 
-      // Recalculate progress for student's current level
-      const studentLevelName = student.literacy_level || "Beginner";
-      const level = await prisma.level.findFirst({
-        where: { name: studentLevelName }
-      });
-
-      if (level) {
-        const levelModules = await prisma.module.findMany({
-          where: { level_id: level.id }
-        });
-        const completedRecords = await prisma.completedModule.findMany({
-          where: { student_id: student.id }
-        });
-        const completedIds = completedRecords.map(r => r.module_id);
-        
-        const totalModulesInLevel = levelModules.length;
-        const completedInLevel = levelModules.filter(m => completedIds.includes(m.id)).length;
-        
-        progressPercent = totalModulesInLevel > 0 
-          ? Math.round((completedInLevel / totalModulesInLevel) * 100) 
-          : 0;
-
-        await prisma.siswa.update({
-          where: { id: student.id },
-          data: { module_progress: progressPercent }
-        });
-      }
+      // Recalculate progress for student's class and level
+      const { progressPercent: updatedProgress } = await calculateStudentModuleProgress(
+        student.id,
+        student.class_id,
+        student.literacy_level
+      );
+      progressPercent = updatedProgress;
 
       // Award badge if applicable
       const targetModule = await prisma.module.findUnique({

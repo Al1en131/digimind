@@ -3,40 +3,113 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
 
-// POST: Add module and post-test under a subject
-export async function POST(request: Request) {
-  try {
-    const cookieStore = await cookies();
-    const sessionToken = cookieStore.get("session_token")?.value;
-    const decoded = sessionToken ? verifyJWT(sessionToken) : null;
+async function getTeacherFromSession() {
+  const cookieStore = await cookies();
+  const sessionToken = cookieStore.get("session_token")?.value;
+  const decoded = sessionToken ? verifyJWT(sessionToken) : null;
 
-    if (!decoded || decoded.role !== "teacher") {
-      return NextResponse.json(
-        { success: false, message: "Akses ditolak. Silakan login kembali." },
-        { status: 401 }
-      );
-    }
+  if (!decoded || decoded.role !== "teacher") {
+    return null;
+  }
 
-    const teacher = await prisma.guru.findUnique({
-      where: { user_id: decoded.userId }
+  return prisma.guru.findUnique({
+    where: { user_id: decoded.userId },
+  });
+}
+
+async function saveQuizInTx(
+  tx: any,
+  type: "pretest" | "posttest",
+  title: string | undefined,
+  questions: any[] | undefined,
+  moduleId: number,
+  subjectId: number,
+  existingQuizzes: any[] = []
+) {
+  if (!title || !title.trim() || !questions || !Array.isArray(questions) || questions.length === 0) {
+    return;
+  }
+
+  let quiz = existingQuizzes.find((q) => q.type === type);
+
+  if (!quiz) {
+    quiz = await tx.quiz.create({
+      data: {
+        title: title.trim(),
+        type,
+        module_id: moduleId,
+        subject_id: subjectId,
+      },
+      include: { questions: { include: { options: true } } },
+    });
+  } else {
+    await tx.quiz.update({
+      where: { id: quiz.id },
+      data: {
+        title: title.trim(),
+        subject_id: subjectId,
+      },
     });
 
-    if (!teacher) {
-      return NextResponse.json(
-        { success: false, message: "Profil guru tidak ditemukan." },
-        { status: 404 }
-      );
+    const existingQuestionIds = quiz.questions?.map((q: any) => q.id) || [];
+    if (existingQuestionIds.length > 0) {
+      await tx.option.deleteMany({
+        where: { question_id: { in: existingQuestionIds } },
+      });
+      await tx.question.deleteMany({
+        where: { quiz_id: quiz.id },
+      });
     }
+  }
 
-    if (teacher.type !== "subject") {
+  for (const q of questions) {
+    if (!q.question || !q.options || !Array.isArray(q.options)) continue;
+
+    const questionRecord = await tx.question.create({
+      data: {
+        quiz_id: quiz.id,
+        question: q.question.trim(),
+      },
+    });
+
+    for (const opt of q.options) {
+      if (!opt.optionText) continue;
+
+      await tx.option.create({
+        data: {
+          question_id: questionRecord.id,
+          option_text: opt.optionText.trim(),
+          is_correct: !!opt.isCorrect,
+        },
+      });
+    }
+  }
+}
+
+// POST: Add module, pre-test, and post-test under a subject
+export async function POST(request: Request) {
+  try {
+    const teacher = await getTeacherFromSession();
+    if (!teacher || teacher.type !== "subject") {
       return NextResponse.json(
-        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul mata pelajaran." },
+        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
         { status: 403 }
       );
     }
 
     const body = await request.json();
-    const { subjectId, title, content, videoUrl, mediaType, quizTitle, questions } = body;
+    const {
+      subjectId,
+      title,
+      content,
+      videoUrl,
+      mediaType,
+      levelName,
+      quizTitle,
+      questions,
+      pretestTitle,
+      pretestQuestions,
+    } = body;
 
     if (!subjectId || !title || !content) {
       return NextResponse.json(
@@ -45,12 +118,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify subject exists and is taught by this teacher
     const subject = await prisma.subject.findFirst({
       where: {
         id: parseInt(subjectId),
-        teacher_id: teacher.id
-      }
+        teacher_id: teacher.id,
+      },
     });
 
     if (!subject) {
@@ -60,27 +132,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find or create Category "Mata Pelajaran"
     let category = await prisma.category.findUnique({
-      where: { name: "Mata Pelajaran" }
+      where: { name: "Mata Pelajaran" },
     });
     if (!category) {
       category = await prisma.category.create({
-        data: { name: "Mata Pelajaran" }
+        data: { name: "Mata Pelajaran" },
       });
     }
 
-    // Find or create a default Level for subject modules (we can use the first available or default "General")
-    let level = await prisma.level.findFirst();
+    const targetLevelName = levelName ? levelName.trim() : "Beginner";
+    let level = await prisma.level.findFirst({
+      where: { name: targetLevelName },
+    });
     if (!level) {
       level = await prisma.level.create({
-        data: { name: "General" }
+        data: { name: targetLevelName },
       });
     }
 
-    // Create the module and quiz in a transaction
     const newModule = await prisma.$transaction(async (tx) => {
-      // 1. Create the module
       const mod = await tx.module.create({
         data: {
           title: title.trim(),
@@ -89,44 +160,12 @@ export async function POST(request: Request) {
           media_type: mediaType || "text",
           category_id: category.id,
           level_id: level.id,
-          subject_id: subject.id
-        }
+          subject_id: subject.id,
+        },
       });
 
-      // 2. Create the post-test quiz if requested
-      if (quizTitle && questions && Array.isArray(questions) && questions.length > 0) {
-        const quiz = await tx.quiz.create({
-          data: {
-            title: quizTitle.trim(),
-            type: "posttest",
-            module_id: mod.id
-          }
-        });
-
-        // 3. Create questions and options
-        for (const q of questions) {
-          if (!q.question || !q.options || !Array.isArray(q.options)) continue;
-
-          const questionRecord = await tx.question.create({
-            data: {
-              quiz_id: quiz.id,
-              question: q.question.trim()
-            }
-          });
-
-          for (const opt of q.options) {
-            if (!opt.optionText) continue;
-
-            await tx.option.create({
-              data: {
-                question_id: questionRecord.id,
-                option_text: opt.optionText.trim(),
-                is_correct: !!opt.isCorrect
-              }
-            });
-          }
-        }
-      }
+      // Save Posttest if provided
+      await saveQuizInTx(tx, "posttest", quizTitle, questions, mod.id, subject.id, []);
 
       return mod;
     });
@@ -134,12 +173,186 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: "Modul mata pelajaran berhasil dibuat!",
-      module: newModule
+      module: newModule,
     });
-
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: "Gagal membuat modul.", error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT: Edit module and post-test
+export async function PUT(request: Request) {
+  try {
+    const teacher = await getTeacherFromSession();
+    if (!teacher || teacher.type !== "subject") {
+      return NextResponse.json(
+        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      moduleId,
+      title,
+      content,
+      videoUrl,
+      mediaType,
+      levelName,
+      quizTitle,
+      questions,
+    } = body;
+
+    if (!moduleId || !title || !content) {
+      return NextResponse.json(
+        { success: false, message: "ID Modul, Judul Modul, dan Konten wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const modIdInt = parseInt(moduleId);
+    const targetModule = await prisma.module.findUnique({
+      where: { id: modIdInt },
+      include: {
+        subject: true,
+        quizzes: {
+          include: {
+            questions: {
+              include: { options: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
+      return NextResponse.json(
+        { success: false, message: "Modul tidak ditemukan atau bukan milik Anda." },
+        { status: 404 }
+      );
+    }
+
+    const targetLevelName = levelName ? levelName.trim() : "Beginner";
+    let level = await prisma.level.findFirst({
+      where: { name: targetLevelName },
+    });
+    if (!level) {
+      level = await prisma.level.create({
+        data: { name: targetLevelName },
+      });
+    }
+
+    const updatedModule = await prisma.$transaction(async (tx) => {
+      const mod = await tx.module.update({
+        where: { id: modIdInt },
+        data: {
+          title: title.trim(),
+          content: content.trim(),
+          video_url: videoUrl ? videoUrl.trim() : null,
+          media_type: mediaType || "text",
+          level_id: level.id,
+        },
+      });
+
+      // Save/Update Posttest
+      await saveQuizInTx(
+        tx,
+        "posttest",
+        quizTitle,
+        questions,
+        mod.id,
+        targetModule.subject_id!,
+        targetModule.quizzes
+      );
+
+      return mod;
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Modul berhasil diperbarui!",
+      module: updatedModule,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Gagal memperbarui modul.", error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Delete a module
+export async function DELETE(request: Request) {
+  try {
+    const teacher = await getTeacherFromSession();
+    if (!teacher || teacher.type !== "subject") {
+      return NextResponse.json(
+        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, message: "ID modul wajib disertakan." },
+        { status: 400 }
+      );
+    }
+
+    const modIdInt = parseInt(id);
+    const targetModule = await prisma.module.findUnique({
+      where: { id: modIdInt },
+      include: { subject: true },
+    });
+
+    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
+      return NextResponse.json(
+        { success: false, message: "Modul tidak ditemukan atau bukan milik Anda." },
+        { status: 404 }
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.badge.deleteMany({ where: { module_id: modIdInt } });
+      await tx.studentModuleProgress.deleteMany({ where: { module_id: modIdInt } });
+      await tx.completedModule.deleteMany({ where: { module_id: modIdInt } });
+
+      const quizzes = await tx.quiz.findMany({ where: { module_id: modIdInt }, select: { id: true } });
+      const quizIds = quizzes.map((q) => q.id);
+
+      if (quizIds.length > 0) {
+        const attempts = await tx.quizAttempt.findMany({ where: { quiz_id: { in: quizIds } }, select: { id: true } });
+        const attemptIds = attempts.map((a) => a.id);
+        if (attemptIds.length > 0) {
+          await tx.answer.deleteMany({ where: { attempt_id: { in: attemptIds } } });
+          await tx.quizAttempt.deleteMany({ where: { id: { in: attemptIds } } });
+        }
+
+        const questions = await tx.question.findMany({ where: { quiz_id: { in: quizIds } }, select: { id: true } });
+        const questionIds = questions.map((q) => q.id);
+        if (questionIds.length > 0) {
+          await tx.option.deleteMany({ where: { question_id: { in: questionIds } } });
+          await tx.question.deleteMany({ where: { id: { in: questionIds } } });
+        }
+        await tx.quiz.deleteMany({ where: { id: { in: quizIds } } });
+      }
+
+      await tx.module.delete({ where: { id: modIdInt } });
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Modul berhasil dihapus!",
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Gagal menghapus modul.", error: error.message },
       { status: 500 }
     );
   }

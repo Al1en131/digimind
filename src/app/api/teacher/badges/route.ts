@@ -114,6 +114,37 @@ export async function POST(request: Request) {
       }
     });
 
+    // Auto-award newly created badge to students who already completed this module
+    try {
+      const completedProgresses = await prisma.completedModule.findMany({
+        where: {
+          module_id: moduleIdInt
+        },
+        select: { student_id: true }
+      });
+
+      if (completedProgresses.length > 0) {
+        for (const cp of completedProgresses) {
+          const existing = await prisma.studentBadge.findFirst({
+            where: {
+              student_id: cp.student_id,
+              badge_id: newBadge.id
+            }
+          });
+          if (!existing) {
+            await prisma.studentBadge.create({
+              data: {
+                student_id: cp.student_id,
+                badge_id: newBadge.id
+              }
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Auto-award badge error on POST:", err);
+    }
+
     return NextResponse.json({
       success: true,
       message: "Badge berhasil dibuat.",
@@ -169,6 +200,37 @@ export async function PUT(request: Request) {
         module_id: moduleIdInt
       }
     });
+
+    // Auto-award updated badge to students who already completed this module
+    try {
+      const completedProgresses = await prisma.completedModule.findMany({
+        where: {
+          module_id: moduleIdInt
+        },
+        select: { student_id: true }
+      });
+
+      if (completedProgresses.length > 0) {
+        for (const cp of completedProgresses) {
+          const existing = await prisma.studentBadge.findFirst({
+            where: {
+              student_id: cp.student_id,
+              badge_id: updatedBadge.id
+            }
+          });
+          if (!existing) {
+            await prisma.studentBadge.create({
+              data: {
+                student_id: cp.student_id,
+                badge_id: updatedBadge.id
+              }
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Auto-award badge error on PUT:", err);
+    }
 
     return NextResponse.json({
       success: true,

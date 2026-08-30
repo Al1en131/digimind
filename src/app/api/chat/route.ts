@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
+import { encryptSensitiveText, decryptSensitiveText } from "@/lib/encryption";
 
 // GET: Fetch chat history
 export async function GET(request: Request) {
@@ -32,10 +33,17 @@ export async function GET(request: Request) {
         );
       }
 
-      // Fetch all Guidance Counselors (Guru BK)
+      // Fetch all Guidance Counselors (Guru BK) with class info
       const bkTeachers = await prisma.guru.findMany({
         where: { type: "bk" },
-        select: { id: true, name: true, phone_number: true, specialization: true }
+        select: {
+          id: true,
+          name: true,
+          phone_number: true,
+          specialization: true,
+          class_id: true,
+          class: { select: { id: true, name: true, major: true } }
+        }
       });
 
       if (bkTeachers.length === 0) {
@@ -47,9 +55,11 @@ export async function GET(request: Request) {
         });
       }
 
-      // Determine active BK teacher
+      // Prioritize Guru BK whose class_id matches the student's class_id
+      const classMatchedBk = bkTeachers.find(b => b.class_id === student.class_id);
+      const defaultTeacherId = classMatchedBk ? classMatchedBk.id : bkTeachers[0].id;
       const paramTeacherId = searchParams.get("teacherId");
-      const activeTeacherId = paramTeacherId ? parseInt(paramTeacherId) : bkTeachers[0].id;
+      const activeTeacherId = paramTeacherId ? parseInt(paramTeacherId) : defaultTeacherId;
 
       // Get chat history with active BK teacher
       const messages = await prisma.chatMessage.findMany({
@@ -60,9 +70,14 @@ export async function GET(request: Request) {
         orderBy: { created_at: "asc" }
       });
 
+      const decryptedMessages = messages.map((m) => ({
+        ...m,
+        message: decryptSensitiveText(m.message),
+      }));
+
       return NextResponse.json({
         success: true,
-        messages,
+        messages: decryptedMessages,
         bkTeachers,
         activeTeacherId
       });
@@ -106,9 +121,14 @@ export async function GET(request: Request) {
         orderBy: { created_at: "asc" }
       });
 
+      const decryptedMessages = messages.map((m) => ({
+        ...m,
+        message: decryptSensitiveText(m.message),
+      }));
+
       return NextResponse.json({
         success: true,
-        messages
+        messages: decryptedMessages
       });
     }
 
@@ -148,6 +168,8 @@ export async function POST(request: Request) {
       );
     }
 
+    const encryptedMessagePayload = encryptSensitiveText(message.trim()) || message.trim();
+
     if (decoded.role === "student") {
       const student = await prisma.siswa.findUnique({
         where: { user_id: decoded.userId }
@@ -175,24 +197,36 @@ export async function POST(request: Request) {
           data: {
             student_id: student.id,
             teacher_id: firstBk.id,
-            message: message.trim(),
+            message: encryptedMessagePayload,
             sender: "student"
           }
         });
 
-        return NextResponse.json({ success: true, message: newMessage });
+        return NextResponse.json({
+          success: true,
+          message: {
+            ...newMessage,
+            message: decryptSensitiveText(newMessage.message)
+          }
+        });
       }
 
       const newMessage = await prisma.chatMessage.create({
         data: {
           student_id: student.id,
           teacher_id: targetTeacherId,
-          message: message.trim(),
+          message: encryptedMessagePayload,
           sender: "student"
         }
       });
 
-      return NextResponse.json({ success: true, message: newMessage });
+      return NextResponse.json({
+        success: true,
+        message: {
+          ...newMessage,
+          message: decryptSensitiveText(newMessage.message)
+        }
+      });
 
     } else if (decoded.role === "teacher") {
       const teacher = await prisma.guru.findUnique({
@@ -224,13 +258,12 @@ export async function POST(request: Request) {
         data: {
           student_id: parseInt(studentId),
           teacher_id: teacher.id,
-          message: message.trim(),
+          message: encryptedMessagePayload,
           sender: "teacher"
         }
       });
 
-      // Also create/update a MentalIntervention record to keep historical logs if desired,
-      // or we can just rely on chat log. To show it in lists, let's create a pending/active mental intervention log.
+      // Also create/update a MentalIntervention record to keep historical logs if desired
       const existingIntervention = await prisma.mentalIntervention.findFirst({
         where: {
           student_id: parseInt(studentId),
@@ -243,8 +276,8 @@ export async function POST(request: Request) {
         await prisma.mentalIntervention.create({
           data: {
             student_id: parseInt(studentId),
-            name: "Intervensi Bimbingan Chat",
-            description: `Intervensi chat aktif dimulai oleh Guru BK: ${teacher.name}`,
+            name: encryptSensitiveText("Intervensi Bimbingan Chat") || "Intervensi Bimbingan Chat",
+            description: encryptSensitiveText(`Intervensi chat aktif dimulai oleh Guru BK: ${teacher.name}`) || `Intervensi chat aktif dimulai oleh Guru BK: ${teacher.name}`,
             status: "active",
             assigned_by: decoded.userId,
             started_at: new Date()
@@ -252,7 +285,13 @@ export async function POST(request: Request) {
         });
       }
 
-      return NextResponse.json({ success: true, message: newMessage });
+      return NextResponse.json({
+        success: true,
+        message: {
+          ...newMessage,
+          message: decryptSensitiveText(newMessage.message)
+        }
+      });
     }
 
     return NextResponse.json(

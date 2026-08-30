@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -48,70 +49,62 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#070b19] px-4 py-12 font-mono text-emerald-400">
-      {/* Background Matrix-like Subtle Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-3xl pointer-events-none" />
-
-      {/* Tech corner lines */}
-      <div className="absolute top-8 left-8 w-16 h-16 border-t-2 border-l-2 border-emerald-500/30 pointer-events-none" />
-      <div className="absolute top-8 right-8 w-16 h-16 border-t-2 border-r-2 border-emerald-500/30 pointer-events-none" />
-      <div className="absolute bottom-8 left-8 w-16 h-16 border-b-2 border-l-2 border-emerald-500/30 pointer-events-none" />
-      <div className="absolute bottom-8 right-8 w-16 h-16 border-b-2 border-r-2 border-emerald-500/30 pointer-events-none" />
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-white px-4 py-12 font-sans text-zinc-900">
+      {/* Decorative Orbs */}
+      <div className="absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[#5A77DF]/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-[#3E53A2]/10 blur-3xl pointer-events-none" />
 
       {/* Main Container */}
       <div className="w-full max-w-md z-10">
-        {/* Terminal Header */}
-        <div className="mb-6 text-center">
-          {/* <div className="inline-block px-3 py-1 mb-2 text-2xs uppercase tracking-widest border border-emerald-500/30 rounded-md bg-emerald-950/20 animate-pulse">
-            Secure Access Portal
-          </div> */}
-          <h1 className="text-2xl font-extrabold tracking-widest text-white uppercase">
-            Admin Login
-          </h1>
-          {/* <p className="mt-1 text-2xs text-emerald-500/60 uppercase">
-            Authorized Personnel Only
-          </p> */}
+        {/* Header */}
+        <div className="mb-6 text-center flex flex-col items-center">
+          <img src="/logo.png" alt="DigiMind Logo" className="h-20 sm:h-24 w-auto object-contain mb-2" />
+          <p className="text-xs text-zinc-500 font-medium">
+            Portal Akses Administrator Digimind
+          </p>
         </div>
 
-        {/* Cyberpunk Card */}
-        <div className="rounded-xl border border-emerald-500/20 bg-slate-950/60 p-8 shadow-[0_0_50px_rgba(16,185,129,0.05)] backdrop-blur-md">
-          <div className="flex items-center gap-2 mb-6 pb-4 border-b border-emerald-500/10">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-ping" />
-            <h2 className="text-sm font-semibold tracking-wider uppercase text-emerald-300">
-              System Authentication
+        {/* Card */}
+        <div className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-xl">
+          <div className="flex items-center gap-2 mb-6 pb-4 border-b border-zinc-100">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#5A77DF] animate-ping" />
+            <h2 className="text-xs font-bold tracking-wider uppercase text-[#3E53A2]">
+              Autentikasi Sistem Admin
             </h2>
           </div>
 
           {/* Alerts */}
           {error && (
-            <div className="mb-6 rounded-lg border border-red-500/30 bg-red-950/25 p-4 text-xs text-red-400">
-              [ERROR]: {error}
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-medium text-red-600 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
           {success && (
-            <div className="mb-6 rounded-lg border border-emerald-500/30 bg-emerald-950/25 p-4 text-xs text-emerald-300 animate-pulse">
-              [SUCCESS]: {success}
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-medium text-emerald-700 animate-pulse flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{success}</span>
             </div>
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-3xs font-semibold uppercase tracking-widest text-emerald-500/70 mb-2">
-                Email / Username
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                Email / Username Admin
               </label>
               <input
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
-                placeholder="root@digimind.sys"
-                className="w-full rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-4 py-3 text-xs text-white placeholder-emerald-950 outline-hidden transition-all duration-200 focus:border-emerald-400 focus:bg-emerald-950/20 focus:ring-1 focus:ring-emerald-400/30"
+                placeholder="admin@digimind.com"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all duration-200 focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
               />
             </div>
 
             <div>
-              <label className="block text-3xs font-semibold uppercase tracking-widest text-emerald-500/70 mb-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
                 Password
               </label>
               <input
@@ -120,19 +113,19 @@ export default function AdminLoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••"
-                className="w-full rounded-lg border border-emerald-500/20 bg-emerald-950/10 px-4 py-3 text-xs text-white placeholder-emerald-950 outline-hidden transition-all duration-200 focus:border-emerald-400 focus:bg-emerald-950/20 focus:ring-1 focus:ring-emerald-400/30"
+                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all duration-200 focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 py-3.5 text-xs font-bold uppercase tracking-widest text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.05)] transition-all duration-300 hover:bg-emerald-500 hover:text-black active:scale-[0.98] disabled:pointer-events-none disabled:opacity-30"
+              className="w-full rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3.5 text-xs font-bold uppercase tracking-wider text-white shadow-lg shadow-[#5A77DF]/25 transition-all duration-300 cursor-pointer active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg
-                    className="h-4 w-4 animate-spin"
+                    className="h-4 w-4 animate-spin text-white"
                     fill="none"
                     viewBox="0 0 24 24"
                   >
@@ -150,21 +143,21 @@ export default function AdminLoginPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Establishing Connection...
+                  Menghubungkan...
                 </span>
               ) : (
-                "Login"
+                "Masuk Admin"
               )}
             </button>
           </form>
 
           {/* Bottom link to default login */}
-          <div className="mt-8 text-center text-3xs text-emerald-500/40">
+          <div className="mt-8 text-center text-xs text-zinc-500">
             <Link
               href="/"
-              className="hover:text-emerald-400 hover:underline transition-all"
+              className="hover:text-[#5A77DF] transition-all font-medium"
             >
-              &lt; Return to Standard Portal
+              ← Kembali ke Portal Standar
             </Link>
           </div>
         </div>

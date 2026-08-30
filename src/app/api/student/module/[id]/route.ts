@@ -95,6 +95,16 @@ export async function GET(
       }
     }
 
+    // Fetch saved module reading progress
+    const progressRecord = await prisma.studentModuleProgress.findUnique({
+      where: {
+        student_id_module_id: {
+          student_id: student.id,
+          module_id: moduleId
+        }
+      }
+    });
+
     return NextResponse.json({
       success: true,
       module: {
@@ -114,7 +124,9 @@ export async function GET(
         questions: quiz.questions
       } : null,
       highestScore,
-      attemptsCount
+      attemptsCount,
+      savedProgress: progressRecord ? progressRecord.progress : 0,
+      savedScrollPos: progressRecord ? progressRecord.scroll_pos : 0
     });
 
   } catch (error: any) {

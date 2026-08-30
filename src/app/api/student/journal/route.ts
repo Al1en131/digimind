@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { encryptSensitiveText, decryptSensitiveText } from "@/lib/encryption";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
       }, { status: 404 });
     }
 
-    const { moodScore, notes, activities } = await request.json();
+    const { moodScore, notes, activities, date } = await request.json();
 
     if (moodScore === undefined) {
       return NextResponse.json({
@@ -115,9 +116,10 @@ export async function POST(request: Request) {
       data: {
         student_id: student.id,
         mood_score: scoreNum,
-        notes: notes || "",
-        activities: activities || "",
-        ai_feedback: aiFeedback
+        notes: encryptSensitiveText(notes || "") || "",
+        activities: encryptSensitiveText(activities || "") || "",
+        ai_feedback: encryptSensitiveText(aiFeedback) || "",
+        logged_at: date ? new Date(date) : new Date()
       }
     });
 
@@ -149,7 +151,12 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: "Jurnal refleksi berhasil disimpan!",
-      journal,
+      journal: {
+        ...journal,
+        notes: decryptSensitiveText(journal.notes),
+        activities: decryptSensitiveText(journal.activities),
+        ai_feedback: decryptSensitiveText(journal.ai_feedback),
+      },
       badgeAwarded
     });
 

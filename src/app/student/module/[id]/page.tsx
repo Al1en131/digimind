@@ -2,6 +2,16 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { 
+  ArrowLeft, 
+  BookOpen, 
+  CheckCircle2, 
+  Award, 
+  Sparkles, 
+  ChevronRight, 
+  AlertCircle,
+  HelpCircle
+} from "lucide-react";
 
 interface Option {
   id: number;
@@ -46,7 +56,11 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
   const [showQuiz, setShowQuiz] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
 
-  // Active question index for single-question view (Pretest style!)
+  const [readingProgress, setReadingProgress] = useState(0);
+  const [savedScrollPos, setSavedScrollPos] = useState(0);
+  const [showScrollRestoredToast, setShowScrollRestoredToast] = useState(false);
+
+  // Active question index for single-question view
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
   // Transition wrappers to scroll to top and show intermediate loader
@@ -81,7 +95,6 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
   // Fetch module and quiz on mount
   useEffect(() => {
-    // Client-side check to prevent direct access if pretest is not completed
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
@@ -103,6 +116,8 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
           setQuiz(data.quiz);
           setIsCompleted(data.isCompleted);
           setHighestScore(data.highestScore);
+          setReadingProgress(data.savedProgress || 0);
+          setSavedScrollPos(data.savedScrollPos || 0);
         } else {
           setError(data.message || "Gagal memuat modul.");
         }
@@ -115,9 +130,65 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
     loadModule();
   }, [moduleId, router]);
 
+  // Restore scroll position once data is loaded
+  useEffect(() => {
+    if (!loading && savedScrollPos > 0 && !showQuiz) {
+      const timer = setTimeout(() => {
+        window.scrollTo({ top: savedScrollPos, behavior: "smooth" });
+        setShowScrollRestoredToast(true);
+        setTimeout(() => setShowScrollRestoredToast(false), 4000);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, savedScrollPos, showQuiz]);
+
+  // Dynamic Scroll Progress Listener
+  useEffect(() => {
+    if (showQuiz || loading || !module) return;
+
+    let timeoutId: NodeJS.Timeout;
+
+    const handleScroll = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const docHeight = document.documentElement.scrollHeight;
+      const winHeight = window.innerHeight;
+
+      const scrollable = docHeight - winHeight;
+      if (scrollable <= 0) return;
+
+      const rawScrollPercent = Math.min(100, Math.max(0, Math.round((scrollTop / scrollable) * 100)));
+      const calculatedReadingProgress = isCompleted ? 100 : Math.min(80, Math.max(10, rawScrollPercent));
+
+      setReadingProgress((prev) => {
+        const newProg = Math.max(prev, calculatedReadingProgress);
+
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          fetch("/api/student/module/progress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              moduleId,
+              progress: newProg,
+              scrollPos: Math.round(scrollTop)
+            })
+          }).catch(() => {});
+        }, 600);
+
+        return newProg;
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      clearTimeout(timeoutId);
+    };
+  }, [showQuiz, loading, module, moduleId, isCompleted]);
+
   // Handle option selection
   const handleSelectOption = (questionId: number, optionId: number) => {
-    if (quizResult?.passed) return; // Prevent changing answers if already passed
+    if (quizResult?.passed) return;
     setSelectedAnswers((prev) => ({
       ...prev,
       [questionId]: optionId,
@@ -185,10 +256,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#03000a] text-white">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-900">
         <div className="text-center space-y-4">
-          <div className="h-12 w-12 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-zinc-400">Memuat materi modul...</p>
+          <div className="h-12 w-12 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs font-semibold text-zinc-600">Memuat materi modul...</p>
         </div>
       </div>
     );
@@ -196,10 +267,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
   if (transitioning) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#03000a] text-white">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-zinc-900">
         <div className="text-center space-y-4">
-          <div className="h-10 w-10 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-xs text-zinc-400 font-medium tracking-wide animate-pulse">
+          <div className="h-10 w-10 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-xs text-zinc-700 font-extrabold tracking-wide animate-pulse">
             {showQuiz ? "Kembali ke Materi Pembelajaran..." : "Mempersiapkan Lembar Soal..."}
           </p>
         </div>
@@ -209,14 +280,14 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
   if (error || !module) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#03000a] text-white p-6">
-        <div className="max-w-md w-full bg-red-950/10 border border-red-500/20 rounded-2xl p-6 text-center space-y-4">
-          <span className="text-3xl">⚠️</span>
-          <h2 className="text-xl font-bold">Modul Tidak Ditemukan</h2>
-          <p className="text-xs text-zinc-400">{error || "Modul yang dicari tidak tersedia."}</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 text-zinc-900 p-6">
+        <div className="max-w-md w-full bg-white border border-rose-500/30 rounded-2xl p-6 text-center space-y-4 shadow-sm">
+          <AlertCircle className="h-10 w-10 text-rose-500 mx-auto" />
+          <h2 className="text-lg font-black text-zinc-900">Modul Tidak Ditemukan</h2>
+          <p className="text-xs text-zinc-600 font-medium">{error || "Modul yang dicari tidak tersedia."}</p>
           <button
             onClick={() => router.push("/student/dashboard")}
-            className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold"
+            className="w-full py-3 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-xs font-extrabold text-white transition shadow-md"
           >
             Kembali ke Dashboard
           </button>
@@ -231,13 +302,28 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
   const currentQuestion = quiz?.questions[currentQuestionIndex];
 
   return (
-    <div className="relative min-h-screen bg-[#03000a] text-white font-sans pb-16">
-      {/* Decorative Orbs */}
-      <div className="absolute top-0 left-0 h-96 w-96 rounded-full bg-violet-600/5 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-indigo-600/5 blur-3xl pointer-events-none" />
+    <div className="relative min-h-screen bg-zinc-50 text-zinc-900 font-sans pb-16">
+      {/* Dynamic Reading Progress Top Bar */}
+      {!showQuiz && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-1.5 bg-zinc-200">
+          <div
+            className="h-full bg-gradient-to-r from-[#5A77DF] via-[#4A64CA] to-[#3E53A2] transition-all duration-300 ease-out"
+            style={{ width: `${isCompleted ? 100 : Math.max(readingProgress, 5)}%` }}
+          />
+        </div>
+      )}
+
+      {/* Floating Toast Notification when Scroll Position is Restored */}
+      {showScrollRestoredToast && !showQuiz && (
+        <div className="fixed bottom-6 right-6 z-50 animate-bounce">
+          <div className="rounded-2xl border border-[#5A77DF]/30 bg-white px-4 py-3 text-xs text-[#3E53A2] font-bold shadow-xl flex items-center gap-2">
+            <span>📍 Melanjutkan posisi membaca sebelumnya (<strong>{readingProgress}%</strong>)</span>
+          </div>
+        </div>
+      )}
 
       {/* TOP BAR */}
-      <header className={`z-10 w-full ${showQuiz ? "max-w-7xl" : "max-w-4xl"} mx-auto px-4 py-4 flex items-center justify-between border-b border-white/5`}>
+      <header className={`z-10 w-full ${showQuiz ? "max-w-7xl" : "max-w-4xl"} mx-auto px-4 py-4 flex items-center justify-between`}>
         <button
           onClick={() => {
             if (showQuiz) {
@@ -246,33 +332,39 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
               router.push("/student/dashboard");
             }
           }}
-          className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-2 text-xs font-bold text-zinc-300 hover:bg-white/5 transition cursor-pointer"
+          className="flex items-center gap-2 rounded-xl border border-[#5A77DF]/20 bg-white px-4 py-2 text-xs font-extrabold text-[#3E53A2] hover:bg-[#5A77DF]/10 transition cursor-pointer shadow-2xs"
         >
-          {showQuiz ? "← Kembali ke Materi" : "← Kembali ke Dashboard"}
+          <ArrowLeft className="h-4 w-4" />
+          {showQuiz ? "Kembali ke Materi" : "Kembali ke Dashboard"}
         </button>
 
         <div className="flex items-center gap-2">
-          <span className="text-3xs uppercase tracking-widest text-zinc-500 font-extrabold font-mono">Modul Belajar</span>
+          <span className="text-3xs uppercase tracking-widest text-[#5A77DF] font-black font-mono">Modul Belajar</span>
         </div>
       </header>
 
       {/* Step Progress Tracker (Shown only on material reading page) */}
       {!showQuiz && (
-        <div className="z-10 w-full max-w-4xl mx-auto px-4 mt-6">
-          <div className="rounded-2xl border border-white/5 bg-white/[0.01] p-4 backdrop-blur-md shadow-lg">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xs font-extrabold tracking-widest uppercase text-zinc-500 font-mono">
+        <div className="z-10 w-full max-w-4xl mx-auto px-4 mt-2">
+          <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-3xs font-extrabold tracking-widest uppercase text-[#5A77DF] font-mono">
                 Status Belajar
               </span>
-              <span className="text-3xs font-extrabold tracking-widest uppercase text-violet-400 bg-violet-500/10 px-2.5 py-0.5 rounded-full border border-violet-500/20">
-                Membaca Materi
+              <span className="text-3xs font-extrabold tracking-widest uppercase text-[#3E53A2] bg-[#5A77DF]/10 px-3 py-1 rounded-full border border-[#5A77DF]/30">
+                Progres Membaca: {isCompleted ? 100 : readingProgress}%
               </span>
             </div>
-            <div className="space-y-1.5">
-              <div className="h-1.5 rounded-full bg-violet-600 shadow-[0_0_10px_rgba(139,92,246,0.5)] w-full animate-pulse" />
-              <div className="flex justify-between items-center text-4xs font-bold uppercase tracking-wider text-zinc-500">
-                <span>Pelajari video dan teks ringkasan di bawah</span>
-                <span className="text-violet-400 font-bold">Sedang Berlangsung</span>
+            <div className="space-y-2">
+              <div className="h-2 rounded-full bg-zinc-100 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#5A77DF] via-[#4A64CA] to-[#3E53A2] transition-all duration-300 ease-out"
+                  style={{ width: `${isCompleted ? 100 : Math.max(readingProgress, 5)}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center text-3xs font-bold uppercase tracking-wider text-zinc-600">
+                <span>Pelajari video dan teks ringkasan di bawah (Scroll untuk memperbarui)</span>
+                <span className="text-[#3E53A2] font-black">{isCompleted ? <span className="inline-flex items-center gap-1">Modul Selesai <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /></span> : `Tersimpan ${readingProgress}%`}</span>
               </div>
             </div>
           </div>
@@ -280,7 +372,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
       )}
 
       {/* MAIN CONTAINER */}
-      <main className="z-10 w-full px-4 py-8">
+      <main className="z-10 w-full px-4 py-6">
         
         {/* ========================================================
             STEP 1: READING MATERIAL MODE (showQuiz === false)
@@ -289,25 +381,24 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
           <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn">
             
             {/* Title Card */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 shadow-xl backdrop-blur-xl space-y-4">
-              <div className="flex items-center gap-2.5">
-                <span className="text-3xs px-2.5 py-0.5 rounded-full font-extrabold uppercase bg-violet-500/10 text-violet-400 border border-violet-500/20">
+            <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="text-3xs px-3 py-1 rounded-full font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30">
                   {module.category}
                 </span>
-                <span className="text-3xs px-2.5 py-0.5 rounded-full font-extrabold uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                <span className="text-3xs px-3 py-1 rounded-full font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30">
                   Level: {module.level}
                 </span>
               </div>
-              <h1 className="text-xl font-extrabold tracking-tight text-zinc-100 sm:text-2xl bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-transparent">
+              <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight leading-tight">
                 {module.title}
               </h1>
             </div>
 
-            {/* Video Player with Ambient Glow */}
+            {/* Video Player with Ambient Border */}
             {module.video_url && module.media_type === "youtube" && (
               <div className="relative group">
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 opacity-20 blur-xl group-hover:opacity-30 transition duration-1000" />
-                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-white/10 bg-black shadow-2xl">
+                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-[#5A77DF]/20 bg-black shadow-lg">
                   <iframe
                     className="absolute inset-0 h-full w-full"
                     src={module.video_url}
@@ -321,51 +412,104 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
             )}
 
             {/* Material Reading Text */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 md:p-8 shadow-xl backdrop-blur-xl space-y-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 pb-2 border-b border-white/5 flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-violet-500 animate-ping" />
+            <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-5">
+              <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900 pb-3 border-b border-zinc-100 flex items-center gap-2 font-mono">
+                <BookOpen className="h-4 w-4 text-[#5A77DF]" />
                 Materi Pembelajaran
               </h2>
-              <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line text-justify">
-                {module.content}
-              </p>
+              
+              {(() => {
+                const contentStr = module.content || "";
+                const isHtml = /<[a-z][\s\S]*>/i.test(contentStr);
+
+                if (isHtml) {
+                  return (
+                    <div
+                      className="text-xs text-zinc-800 font-medium leading-relaxed max-w-none space-y-4"
+                      dangerouslySetInnerHTML={{ __html: contentStr }}
+                    />
+                  );
+                }
+
+                const paragraphs = contentStr.split("\n\n");
+                return (
+                  <div className="space-y-4 text-xs text-zinc-800 font-medium leading-relaxed">
+                    {paragraphs.map((p, idx) => {
+                      const imgMatch = /!\[(.*?)\]\((.*?)\)/.exec(p);
+                      if (imgMatch) {
+                        const caption = imgMatch[1];
+                        const imgSrc = imgMatch[2];
+                        return (
+                          <div key={idx} className="my-4 rounded-xl border border-zinc-200 overflow-hidden bg-zinc-50 p-2 space-y-2">
+                            <img src={imgSrc} alt={caption || "Gambar Modul"} className="w-full h-auto max-h-[450px] object-cover rounded-lg" />
+                            {caption && <p className="text-3xs text-center text-zinc-500 italic">{caption}</p>}
+                          </div>
+                        );
+                      }
+
+                      const parts = p.split(/(\[.*?\]\(.*?\))/g);
+                      return (
+                        <p key={idx} className="whitespace-pre-line text-justify">
+                          {parts.map((part, pIdx) => {
+                            const linkMatch = /\[(.*?)\]\((.*?)\)/.exec(part);
+                            if (linkMatch) {
+                              return (
+                                <a
+                                  key={pIdx}
+                                  href={linkMatch[2]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[#5A77DF] underline hover:text-[#3E53A2] font-bold transition"
+                                >
+                                  {linkMatch[1]} 🔗
+                                </a>
+                              );
+                            }
+                            return part;
+                          })}
+                        </p>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Learning Tips Callout */}
-            <div className="rounded-2xl border border-violet-500/10 bg-violet-500/[0.02] p-5 shadow-lg backdrop-blur-xl flex items-start gap-4">
-              <span className="text-xl">💡</span>
+            <div className="rounded-2xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 p-6 shadow-sm flex items-start gap-4">
+              <Sparkles className="h-6 w-6 text-[#5A77DF] shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <h4 className="text-xs font-bold text-violet-400">Tips Uji Pemahaman</h4>
-                <p className="text-2xs text-zinc-400 leading-relaxed">
-                  Pahami video pembelajaran dan teks ringkasan materi di atas dengan saksama. Setelah merasa yakin, tekan tombol di bawah untuk memulai posttest. Anda memerlukan nilai minimal <strong className="text-violet-300 font-bold">70%</strong> untuk menyelesaikan modul ini dan membuka lencana baru!
+                <h4 className="text-xs font-extrabold text-[#3E53A2]">Tips Uji Pemahaman</h4>
+                <p className="text-2xs text-zinc-700 leading-relaxed font-medium">
+                  Pahami video pembelajaran dan teks ringkasan materi di atas dengan saksama. Setelah merasa yakin, tekan tombol di bawah untuk memulai posttest. Anda memerlukan nilai minimal <strong className="text-[#3E53A2] font-black">70%</strong> untuk menyelesaikan modul ini dan membuka lencana baru!
                 </p>
               </div>
             </div>
 
             {/* BOTTOM NAVIGATION / ACTION CTA */}
             {isCompleted ? (
-              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-950/10 p-6 text-center space-y-4 shadow-xl">
-                <div className="flex items-center justify-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
-                  <span className="h-5 w-5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-[10px]">✓</span>
+              <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 text-center space-y-4 shadow-sm">
+                <div className="flex items-center justify-center gap-2 text-[#3E53A2] font-black text-xs uppercase tracking-wider">
+                  <CheckCircle2 className="h-5 w-5 text-[#5A77DF]" />
                   <span>Anda telah menyelesaikan modul ini!</span>
                 </div>
                 {highestScore !== null && (
-                  <p className="text-2xs text-zinc-300">
-                    Nilai Posttest Tertinggi Anda: <strong className="text-emerald-400 font-bold">{highestScore}%</strong>
+                  <p className="text-xs text-zinc-700 font-medium">
+                    Nilai Posttest Tertinggi Anda: <strong className="text-[#3E53A2] font-black text-sm">{highestScore}%</strong>
                   </p>
                 )}
                 <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                   <button
                     type="button"
                     onClick={handleStartQuiz}
-                    className="rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] px-6 py-3 text-2xs font-bold text-zinc-300 transition cursor-pointer"
+                    className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 px-6 py-3 text-xs font-extrabold text-[#3E53A2] transition cursor-pointer"
                   >
                     Uji Ulang Pemahaman
                   </button>
                   <button
                     type="button"
                     onClick={() => router.push("/student/dashboard")}
-                    className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3 text-2xs font-bold text-white transition hover:brightness-110 shadow-lg shadow-indigo-500/20 cursor-pointer"
+                    className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
                   >
                     Kembali ke Dashboard
                   </button>
@@ -376,10 +520,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                 <button
                   type="button"
                   onClick={handleStartQuiz}
-                  className="w-full max-w-md rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-4 text-xs font-extrabold tracking-widest uppercase text-white shadow-lg shadow-violet-600/20 transition hover:brightness-110 hover:shadow-violet-600/40 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full max-w-md rounded-2xl bg-[#5A77DF] hover:bg-[#3E53A2] py-4 text-xs font-extrabold tracking-wider uppercase text-white shadow-md transition duration-200 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <span>Mulai Uji Pemahaman</span>
-                  <span className="text-sm">→</span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
             )}
@@ -392,60 +536,61 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
           <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn">
             
             {/* Header Info */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-xl flex items-center justify-between">
+            <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm flex items-center justify-between">
               <div>
-                <span className="text-3xs uppercase tracking-widest text-violet-400 font-extrabold font-mono">Uji Pemahaman</span>
-                <h2 className="text-xs font-bold text-zinc-300 mt-0.5">Posttest: {module.title}</h2>
+                <span className="text-3xs uppercase tracking-widest text-[#5A77DF] font-black font-mono">Uji Pemahaman</span>
+                <h2 className="text-sm font-black text-zinc-900 mt-0.5">Posttest: {module.title}</h2>
               </div>
               <button
                 type="button"
                 onClick={handleBackToMaterial}
-                className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-2 text-3xs font-bold text-zinc-400 hover:bg-white/5 transition cursor-pointer"
+                className="rounded-xl border border-[#5A77DF]/20 bg-white px-4 py-2 text-xs font-extrabold text-[#3E53A2] hover:bg-[#5A77DF]/10 transition cursor-pointer"
               >
                 ← Lihat Materi
               </button>
             </div>
 
-            {/* Quiz content layouts (Pretest style!) */}
+            {/* Quiz content layouts */}
             {quiz ? (
               <div className="flex flex-col gap-8 md:flex-row">
                 
                 {/* Left side: Question detail or results */}
-                <div className="flex-1 rounded-2xl border border-white/10 bg-[#090514] p-6 md:p-8 shadow-2xl space-y-6">
+                <div className="flex-1 rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-6">
                   {quizResult ? (
                     /* Quiz Result UI */
                     <div className="text-center space-y-5 py-4 animate-fadeIn">
-                      <div className={`h-16 w-16 mx-auto rounded-full flex items-center justify-center text-3xl border ${
+                      <div className={`h-16 w-16 mx-auto rounded-2xl flex items-center justify-center text-3xl border shadow-xs ${
                         quizResult.passed 
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
-                          : "bg-red-500/10 border-red-500/20 text-red-400"
+                          ? "bg-[#5A77DF]/10 border-[#5A77DF]/30 text-[#5A77DF]" 
+                          : "bg-rose-50 border-rose-200 text-rose-600"
                       }`}>
-                        {quizResult.passed ? "✓" : "✗"}
+                        {quizResult.passed ? <CheckCircle2 className="h-8 w-8 text-[#5A77DF]" /> : <AlertCircle className="h-8 w-8 text-rose-600" />}
                       </div>
                       
                       <div className="space-y-1">
-                        <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        <h4 className="text-xs font-extrabold text-zinc-600 uppercase tracking-wider font-mono">
                           {quizResult.passed ? "Hasil Evaluasi: LULUS" : "Hasil Evaluasi: BELUM LULUS"}
                         </h4>
-                        <p className="text-2xs text-zinc-400">Skor Anda:</p>
-                        <div className={`text-4xl font-black ${quizResult.passed ? "text-emerald-400" : "text-red-400"}`}>
+                        <p className="text-2xs text-zinc-500 font-medium">Skor Anda:</p>
+                        <div className={`text-4xl font-black ${quizResult.passed ? "text-[#3E53A2]" : "text-rose-600"}`}>
                           {quizResult.score}%
                         </div>
                       </div>
 
                       {quizResult.passed ? (
-                        <p className="text-2xs text-zinc-300 max-w-sm mx-auto leading-relaxed">
+                        <p className="text-xs text-zinc-700 max-w-sm mx-auto leading-relaxed font-medium">
                           Luar biasa! Anda memahami materi dengan baik dan berhasil menyelesaikan modul ini.
                         </p>
                       ) : (
-                        <p className="text-2xs text-zinc-400 max-w-sm mx-auto leading-relaxed">
-                          Batas kelulusan adalah <strong className="text-white">70%</strong>. Silakan baca kembali materi untuk mempertajam pemahaman Anda dan coba lagi!
+                        <p className="text-xs text-zinc-700 max-w-sm mx-auto leading-relaxed font-medium">
+                          Batas kelulusan adalah <strong className="text-zinc-900 font-bold">70%</strong>. Silakan baca kembali materi untuk mempertajam pemahaman Anda dan coba lagi!
                         </p>
                       )}
 
                       {quizResult.badgeAwarded && (
-                        <div className="max-w-md mx-auto rounded-xl border border-violet-500/20 bg-violet-600/5 p-3 text-3xs text-violet-400 leading-normal">
-                          🏆 <strong>Lencana Baru!</strong> Anda memperoleh lencana <strong>&apos;{quizResult.badgeAwarded}&apos;</strong> karena menyelesaikan modul ini.
+                        <div className="max-w-md mx-auto rounded-2xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 p-4 text-xs text-[#3E53A2] leading-normal font-bold flex items-center justify-center gap-2">
+                          <Award className="h-5 w-5 text-[#5A77DF]" />
+                          <span>Lencana Baru diperoleh: <strong>&apos;{quizResult.badgeAwarded}&apos;</strong></span>
                         </div>
                       )}
 
@@ -455,14 +600,14 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                             <button
                               type="button"
                               onClick={handleBackToMaterial}
-                              className="rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] px-6 py-3 text-2xs font-bold text-zinc-300 transition cursor-pointer"
+                              className="rounded-xl border border-zinc-200 bg-zinc-100 hover:bg-zinc-200 px-6 py-3 text-xs font-bold text-zinc-700 transition cursor-pointer"
                             >
                               Baca Materi Kembali
                             </button>
                             <button
                               type="button"
                               onClick={handleRetryQuiz}
-                              className="rounded-xl bg-violet-600 hover:bg-violet-500 px-6 py-3 text-2xs font-bold text-white transition cursor-pointer"
+                              className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
                             >
                               Coba Lagi
                             </button>
@@ -471,7 +616,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                           <button
                             type="button"
                             onClick={() => router.push("/student/dashboard")}
-                            className="w-full max-w-xs rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3 text-2xs font-bold text-white transition hover:brightness-110 shadow-lg shadow-indigo-500/20 cursor-pointer"
+                            className="w-full max-w-xs rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
                           >
                             Selesai & Masuk Dashboard
                           </button>
@@ -481,15 +626,15 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                   ) : (
                     /* Quiz Answering UI */
                     <div className="space-y-6">
-                      {/* Question progress bar (Pretest style!) */}
+                      {/* Question progress bar */}
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center text-3xs uppercase tracking-widest text-zinc-500 font-bold font-mono">
+                        <div className="flex justify-between items-center text-3xs uppercase tracking-widest text-zinc-600 font-extrabold font-mono">
                           <span>Progress Posttest</span>
-                          <span className="text-violet-400">{progressPercent}% Selesai ({answeredCount} dari {totalQuestions} terjawab)</span>
+                          <span className="text-[#3E53A2] font-black">{progressPercent}% Selesai ({answeredCount} dari {totalQuestions} terjawab)</span>
                         </div>
-                        <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-2 rounded-full bg-zinc-100 overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300 ease-out"
+                            className="h-full bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] transition-all duration-300 ease-out"
                             style={{ width: `${progressPercent}%` }}
                           />
                         </div>
@@ -497,9 +642,9 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
                       {/* Current Question Text and Options */}
                       {currentQuestion && (
-                        <div className="space-y-6 pt-4 border-t border-white/5">
-                          <div className="text-sm font-semibold leading-relaxed text-zinc-200">
-                            <span className="text-violet-400 font-extrabold uppercase mr-1.5 font-mono">
+                        <div className="space-y-6 pt-4 border-t border-zinc-100">
+                          <div className="text-sm font-extrabold leading-relaxed text-zinc-900">
+                            <span className="text-[#5A77DF] font-black uppercase mr-1.5 font-mono">
                               Pertanyaan {currentQuestionIndex + 1} dari {totalQuestions}:
                             </span>
                             {currentQuestion.question}
@@ -513,10 +658,10 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                                   key={opt.id}
                                   type="button"
                                   onClick={() => handleSelectOption(currentQuestion.id, opt.id)}
-                                  className={`w-full text-left rounded-xl border px-4 py-3.5 text-2xs font-medium transition duration-200 cursor-pointer ${
+                                  className={`w-full text-left rounded-xl border px-4 py-3.5 text-xs font-medium transition duration-200 cursor-pointer ${
                                     isSelected
-                                      ? "border-violet-500 bg-violet-600/15 text-violet-200 shadow-[0_0_15px_rgba(139,92,246,0.15)]"
-                                      : "border-white/5 bg-white/[0.01] text-zinc-400 hover:border-white/10 hover:bg-white/[0.03] hover:text-zinc-200"
+                                      ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] font-extrabold shadow-2xs"
+                                      : "border-zinc-200 bg-white text-zinc-800 hover:border-[#5A77DF]/50 hover:bg-zinc-50"
                                   }`}
                                 >
                                   {opt.option_text}
@@ -527,8 +672,8 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                         </div>
                       )}
 
-                      {/* Navigation Actions (Pretest style!) */}
-                      <div className="flex items-center justify-between border-t border-white/5 pt-6 mt-8">
+                      {/* Navigation Actions */}
+                      <div className="flex items-center justify-between border-t border-zinc-100 pt-6 mt-8">
                         <button
                           type="button"
                           onClick={() => {
@@ -537,7 +682,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                             }
                           }}
                           disabled={currentQuestionIndex === 0}
-                          className="rounded-xl border border-white/10 bg-white/[0.02] px-5 py-3 text-2xs font-semibold text-zinc-300 transition-all hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                          className="rounded-xl border border-zinc-200 bg-zinc-100 px-5 py-3 text-xs font-bold text-zinc-700 transition hover:bg-zinc-200 disabled:pointer-events-none disabled:opacity-40 cursor-pointer"
                         >
                           Sebelumnya
                         </button>
@@ -547,7 +692,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                             type="button"
                             onClick={handleSubmitQuiz}
                             disabled={submittingQuiz}
-                            className="rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-8 py-3 text-2xs font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                            className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-8 py-3 text-xs font-extrabold text-white shadow-md transition disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
                           >
                             {submittingQuiz ? "Mengirim..." : "Kirim Jawaban Posttest"}
                           </button>
@@ -559,7 +704,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                                 setCurrentQuestionIndex(prev => prev + 1);
                               }
                             }}
-                            className="rounded-xl bg-violet-600 px-8 py-3 text-2xs font-semibold text-white transition hover:bg-violet-500 active:scale-[0.98] cursor-pointer"
+                            className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-8 py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
                           >
                             Selanjutnya
                           </button>
@@ -572,8 +717,8 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
                 {/* Right side: Sidebar list of questions navigator */}
                 {!quizResult && (
-                  <div className="w-full md:w-72 rounded-2xl border border-white/10 bg-white/[0.02] p-5 shadow-2xl backdrop-blur-xl shrink-0 space-y-4">
-                    <h3 className="text-2xs font-bold uppercase tracking-wider text-zinc-400 pb-2 border-b border-white/5 font-mono">
+                  <div className="w-full md:w-72 rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm shrink-0 space-y-4">
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] pb-2 border-b border-zinc-100 font-mono">
                       Navigasi Soal
                     </h3>
                     
@@ -589,30 +734,30 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
                             onClick={() => setCurrentQuestionIndex(idx)}
                             className={`flex flex-col items-center justify-center rounded-xl border transition-all cursor-pointer w-14 h-14 sm:w-16 sm:h-16 ${
                               isActive
-                                ? "border-violet-500 bg-violet-600/20 text-white font-bold ring-1 ring-violet-500/30 shadow-[0_0_10px_rgba(139,92,246,0.2)]"
+                                ? "border-[#5A77DF] bg-[#5A77DF] text-white font-extrabold shadow-md"
                                 : isAnswered
-                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:border-emerald-500/50"
-                                : "border-white/5 bg-white/[0.01] text-zinc-500 hover:border-white/15 hover:bg-white/[0.03]"
+                                ? "border-[#5A77DF]/30 bg-[#5A77DF]/10 text-[#3E53A2] font-bold"
+                                : "border-zinc-200 bg-white text-zinc-600 hover:border-[#5A77DF]/50 hover:bg-zinc-50"
                             }`}
                           >
-                            <span className="text-3xs font-semibold uppercase tracking-wider text-zinc-400 font-mono">Soal</span>
+                            <span className={`text-3xs font-extrabold uppercase tracking-wider font-mono ${isActive ? "text-white" : "text-zinc-500"}`}>Soal</span>
                             <span className="text-sm font-extrabold mt-0.5">{idx + 1}</span>
                           </button>
                         );
                       })}
                     </div>
 
-                    <div className="mt-6 flex flex-col gap-2 text-4xs text-zinc-500 border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/50 border border-emerald-500/30" />
+                    <div className="mt-6 flex flex-col gap-2 text-3xs text-zinc-600 border-t border-zinc-100 pt-4 font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-[#5A77DF]/20 border border-[#5A77DF]" />
                         <span>Sudah dijawab</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-violet-600/30 border border-violet-500/50" />
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-[#5A77DF]" />
                         <span>Soal aktif saat ini</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-white/5 border border-white/10" />
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-white border border-zinc-300" />
                         <span>Belum dijawab</span>
                       </div>
                     </div>
@@ -621,7 +766,7 @@ export default function ModuleDetailPage({ params }: { params: Promise<{ id: str
 
               </div>
             ) : (
-              <div className="rounded-2xl border border-white/5 bg-white/[0.01] p-8 text-center text-zinc-500 text-xs italic">
+              <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-8 text-center text-zinc-500 text-xs italic">
                 Ujian posttest sedang disiapkan oleh Guru/AI.
               </div>
             )}

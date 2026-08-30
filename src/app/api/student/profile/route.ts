@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
-import { verifyJWT } from "@/lib/auth-utils";
+import { verifyJWT, hashPassword } from "@/lib/auth-utils";
 
 export async function PUT(request: Request) {
   try {
@@ -27,7 +27,7 @@ export async function PUT(request: Request) {
       }, { status: 404 });
     }
 
-    const { name, username, avatar } = await request.json();
+    const { name, username, avatar, password, class_id } = await request.json();
 
     if (!name || name.trim() === "") {
       return NextResponse.json({
@@ -60,18 +60,32 @@ export async function PUT(request: Request) {
       }, { status: 400 });
     }
 
+    const siswaUpdateData: any = {
+      name: name.trim(),
+      avatar: avatar
+    };
+
+    if (class_id) {
+      const parsedClassId = parseInt(class_id);
+      if (!isNaN(parsedClassId)) {
+        siswaUpdateData.class_id = parsedClassId;
+      }
+    }
+
     // Update User and Siswa in transaction
+    const userUpdateData: any = { username: cleanUsername };
+    if (password && password.trim() !== "") {
+      userUpdateData.password = hashPassword(password);
+    }
+
     const [updatedUser, updatedStudent] = await prisma.$transaction([
       prisma.user.update({
         where: { id: decoded.userId },
-        data: { username: cleanUsername }
+        data: userUpdateData
       }),
       prisma.siswa.update({
         where: { id: student.id },
-        data: {
-          name: name.trim(),
-          avatar: avatar
-        }
+        data: siswaUpdateData
       })
     ]);
 

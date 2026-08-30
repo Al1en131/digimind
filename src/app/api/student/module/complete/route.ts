@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
+import { calculateStudentModuleProgress } from "@/lib/student-progress";
 
 export async function POST(request: Request) {
   try {
@@ -65,34 +66,12 @@ export async function POST(request: Request) {
       }
     });
 
-    // Recalculate progress for student's current level
-    const studentLevelName = student.literacy_level || "Beginner";
-    const level = await prisma.level.findFirst({
-      where: { name: studentLevelName }
-    });
-
-    let progressPercent = 0;
-    if (level) {
-      const levelModules = await prisma.module.findMany({
-        where: { level_id: level.id }
-      });
-      const completedRecords = await prisma.completedModule.findMany({
-        where: { student_id: student.id }
-      });
-      const completedIds = completedRecords.map(r => r.module_id);
-      
-      const totalModulesInLevel = levelModules.length;
-      const completedInLevel = levelModules.filter(m => completedIds.includes(m.id)).length;
-      
-      progressPercent = totalModulesInLevel > 0 
-        ? Math.round((completedInLevel / totalModulesInLevel) * 100) 
-        : 0;
-
-      await prisma.siswa.update({
-        where: { id: student.id },
-        data: { module_progress: progressPercent }
-      });
-    }
+    // Recalculate class and level-scoped progress
+    const { progressPercent } = await calculateStudentModuleProgress(
+      student.id,
+      student.class_id,
+      student.literacy_level
+    );
 
     // Dynamic Badge Awarding Logic
     const categoryName = targetModule.category.name.toLowerCase();

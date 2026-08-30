@@ -1,14 +1,55 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import { 
+  Home, 
+  ClipboardList, 
+  BookOpen, 
+  FileText, 
+  MessageSquare, 
+  Award, 
+  User, 
+  Bell, 
+  FolderOpen, 
+  X, 
+  Sparkles, 
+  CheckCircle2, 
+  AlertTriangle, 
+  RefreshCw, 
+  LogOut,
+  Upload,
+  ArrowRight,
+  GraduationCap,
+  UserCheck,
+  Frown,
+  Annoyed,
+  Meh,
+  Smile,
+  Laugh,
+  PenTool,
+  Edit3,
+  Lock,
+  Eye,
+  EyeOff,
+  Key,
+  Zap,
+  Play
+} from "lucide-react";
+
+interface SchoolClassItem {
+  id: number;
+  name: string;
+  major: string | null;
+}
 
 interface Student {
   id: number;
   name: string;
   username: string;
   nis: string;
+  class_id?: number;
   class: string;
   avatar: string | null;
   literacy_level: string;
@@ -26,7 +67,19 @@ interface Module {
   id: number;
   title: string;
   content: string;
-  category: ModuleCategory;
+  category?: ModuleCategory;
+  progress?: number;
+}
+
+interface Subject {
+  id: number;
+  name: string;
+  teacher?: { name: string } | null;
+  pretestQuizId?: number | null;
+  hasPretest: boolean;
+  level: string;
+  score?: number;
+  modules: Module[];
 }
 
 interface Badge {
@@ -55,55 +108,190 @@ interface Leaderboard {
   total: number;
 }
 
+interface MonthlyScreeningRecord {
+  id: number;
+  period: string;
+  mental_level: string;
+  recommendations: string | null;
+  created_at: string;
+}
+
+interface MonthlyScreeningInfo {
+  isCompletedThisMonth: boolean;
+  lastCompletedAt: string | null;
+  history: MonthlyScreeningRecord[];
+}
+
 interface DashboardData {
   success: boolean;
   student: Student;
+  allClasses?: SchoolClassItem[];
+  monthlyScreening?: MonthlyScreeningInfo;
   modules: Module[];
   completedModuleIds: number[];
-  subjects: any[];
+  moduleProgressMap?: Record<number, number>;
+  subjects: Subject[];
   badges: BadgesState;
   journals: Journal[];
   leaderboard: Leaderboard;
 }
 
-// Emojis for mood
+// Flaticon / Modern Vector Style Colorful Mood SVGs
+const MoodSvgBuruk = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="url(#grad_buruk)" />
+    <circle cx="22" cy="26" r="3.5" fill="#27272A" />
+    <circle cx="42" cy="26" r="3.5" fill="#27272A" />
+    <path d="M18 20C21 17 25 18 26 21" stroke="#27272A" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M46 20C43 17 39 18 38 21" stroke="#27272A" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M22 42C26 37 38 37 42 42" stroke="#27272A" strokeWidth="3" strokeLinecap="round" />
+    <path d="M44 32C44 32 41 37 41 39.5C41 41.4 42.3 43 44 43C45.7 43 47 41.4 47 39.5C47 37 44 32 44 32Z" fill="#3B82F6" />
+    <defs>
+      <linearGradient id="grad_buruk" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FCD34D" />
+        <stop offset="1" stopColor="#F59E0B" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+const MoodSvgCemas = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="url(#grad_cemas)" />
+    <path d="M44 14C44 14 41 18 41 20C41 21.6 42.3 23 44 23C45.7 23 47 21.6 47 20C47 18 44 14 44 14Z" fill="#60A5FA" />
+    <circle cx="22" cy="28" r="4" fill="#27272A" />
+    <circle cx="42" cy="28" r="4" fill="#27272A" />
+    <path d="M17 21C21 23 25 24 27 24" stroke="#27272A" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M47 21C43 23 39 24 37 24" stroke="#27272A" strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M22 41C25 39 28 43 32 41C36 39 39 43 42 41" stroke="#27272A" strokeWidth="3" strokeLinecap="round" />
+    <defs>
+      <linearGradient id="grad_cemas" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FDE047" />
+        <stop offset="1" stopColor="#F59E0B" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+const MoodSvgBiasa = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="url(#grad_biasa)" />
+    <circle cx="22" cy="26" r="3.5" fill="#27272A" />
+    <circle cx="42" cy="26" r="3.5" fill="#27272A" />
+    <line x1="22" y1="40" x2="42" y2="40" stroke="#27272A" strokeWidth="3.5" strokeLinecap="round" />
+    <defs>
+      <linearGradient id="grad_biasa" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FDE047" />
+        <stop offset="1" stopColor="#EAB308" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+const MoodSvgBaik = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="url(#grad_baik)" />
+    <circle cx="15" cy="34" r="5" fill="#F43F5E" opacity="0.3" />
+    <circle cx="49" cy="34" r="5" fill="#F43F5E" opacity="0.3" />
+    <circle cx="22" cy="25" r="3.5" fill="#27272A" />
+    <circle cx="42" cy="25" r="3.5" fill="#27272A" />
+    <path d="M20 36C20 36 24 45 32 45C40 45 44 36 44 36" stroke="#27272A" strokeWidth="3.5" strokeLinecap="round" />
+    <defs>
+      <linearGradient id="grad_baik" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FEF08A" />
+        <stop offset="1" stopColor="#EAB308" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+const MoodSvgSangatBaik = ({ className = "w-8 h-8" }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="32" r="30" fill="url(#grad_sangat_baik)" />
+    <circle cx="14" cy="34" r="5.5" fill="#F43F5E" opacity="0.35" />
+    <circle cx="50" cy="34" r="5.5" fill="#F43F5E" opacity="0.35" />
+    <path d="M22 20L23.5 24L27.5 24.5L24.5 27L25.5 31L22 28.5L18.5 31L19.5 27L16.5 24.5L20.5 24L22 20Z" fill="#27272A" />
+    <path d="M42 20L43.5 24L47.5 24.5L44.5 27L45.5 31L42 28.5L38.5 31L39.5 27L36.5 24.5L40.5 24L42 20Z" fill="#27272A" />
+    <path d="M18 36C18 36 22 48 32 48C42 48 46 36 46 36H18Z" fill="#27272A" />
+    <path d="M25 44C27 41 37 41 39 44C37 47 27 47 25 44Z" fill="#F43F5E" />
+    <defs>
+      <linearGradient id="grad_sangat_baik" x1="32" y1="2" x2="32" y2="62" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#FEF08A" />
+        <stop offset="1" stopColor="#F59E0B" />
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
 const MOOD_EMOJIS = [
-  { score: 1, char: "😢", label: "Buruk" },
-  { score: 2, char: "😕", label: "Cemas" },
-  { score: 3, char: "😐", label: "Biasa" },
-  { score: 4, char: "🙂", label: "Baik" },
-  { score: 5, char: "😄", label: "Sangat Baik" },
+  { score: 1, char: "😢", label: "Buruk", color: "text-rose-500", icon: <MoodSvgBuruk className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgBuruk className="w-6 h-6" />, lgIcon: <MoodSvgBuruk className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
+  { score: 2, char: "😕", label: "Cemas", color: "text-amber-500", icon: <MoodSvgCemas className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgCemas className="w-6 h-6" />, lgIcon: <MoodSvgCemas className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
+  { score: 3, char: "😐", label: "Biasa", color: "text-[#5A77DF]", icon: <MoodSvgBiasa className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgBiasa className="w-6 h-6" />, lgIcon: <MoodSvgBiasa className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
+  { score: 4, char: "🙂", label: "Baik", color: "text-emerald-500", icon: <MoodSvgBaik className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgBaik className="w-6 h-6" />, lgIcon: <MoodSvgBaik className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
+  { score: 5, char: "😄", label: "Sangat Baik", color: "text-emerald-600", icon: <MoodSvgSangatBaik className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgSangatBaik className="w-6 h-6" />, lgIcon: <MoodSvgSangatBaik className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
 ];
 
-type DashboardTab = "home" | "modul" | "pelajaran" | "jurnal" | "chat_bk" | "badge" | "profil";
+const indonesianMonths = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+];
 
-const NAV_ITEMS: { id: DashboardTab; label: string; icon: string }[] = [
-  { id: "home", label: "Home", icon: "🏠" },
-  { id: "modul", label: "Modul", icon: "📘" },
-  { id: "pelajaran", label: "Modul Pelajaran", icon: "📚" },
-  { id: "jurnal", label: "Jurnal", icon: "📝" },
-  { id: "chat_bk", label: "Chat BK", icon: "💬" },
-  { id: "badge", label: "Badge", icon: "🏆" },
-  { id: "profil", label: "Profil", icon: "👤" },
+type DashboardTab = "home" | "screening" | "modul" | "jurnal" | "chat_bk" | "badge" | "profil";
+
+const NAV_ITEMS: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
+  { id: "home", label: "Home", icon: <Home className="w-4 h-4" /> },
+  { id: "screening", label: "Screening Bulanan", icon: <ClipboardList className="w-4 h-4" /> },
+  { id: "modul", label: "Modul", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "jurnal", label: "Jurnal", icon: <FileText className="w-4 h-4" /> },
+  { id: "chat_bk", label: "Chat BK", icon: <MessageSquare className="w-4 h-4" /> },
+  { id: "badge", label: "Badge", icon: <Award className="w-4 h-4" /> },
+  { id: "profil", label: "Profil", icon: <User className="w-4 h-4" /> },
 ];
 
 export default function StudentDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("home");
-  const [selectedAI, setSelectedAI] = useState<Journal | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Journal form state
-  const [journalDate, setJournalDate] = useState(
-    new Date().toISOString().split("T")[0],
-  );
   const [moodScore, setMoodScore] = useState<number>(3);
   const [journalNotes, setJournalNotes] = useState("");
   const [journalActivities, setJournalActivities] = useState("");
   const [submittingJournal, setSubmittingJournal] = useState(false);
   const [journalMessage, setJournalMessage] = useState<string | null>(null);
+
+  // Calendar and popup modal states
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const [showFillModal, setShowFillModal] = useState(false);
+  const [selectedFillDate, setSelectedFillDate] = useState("");
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedDetailJournal, setSelectedDetailJournal] = useState<any>(null);
+
+  // Monthly SRQ Screening states
+  const [showMonthlySrqModal, setShowMonthlySrqModal] = useState(false);
+  const [monthlySrqQuiz, setMonthlySrqQuiz] = useState<any | null>(null);
+  const [monthlySrqAnswers, setMonthlySrqAnswers] = useState<Record<number, number>>({});
+  const [monthlySrqIndex, setMonthlySrqIndex] = useState(0);
+  const [loadingMonthlySrq, setLoadingMonthlySrq] = useState(false);
+  const [submittingMonthlySrq, setSubmittingMonthlySrq] = useState(false);
+  const [monthlySrqResult, setMonthlySrqResult] = useState<any | null>(null);
+
+  // Subject Pretest Modal states
+  const [showSubjectPretestModal, setShowSubjectPretestModal] = useState(false);
+  const [activeSubject, setActiveSubject] = useState<Subject | null>(null);
+  const [subjectQuiz, setSubjectQuiz] = useState<any | null>(null);
+  const [subjectAnswers, setSubjectAnswers] = useState<Record<number, number>>({});
+  const [subjectPretestIndex, setSubjectPretestIndex] = useState(0);
+  const [loadingSubjectQuiz, setLoadingSubjectQuiz] = useState(false);
+  const [submittingSubjectPretest, setSubmittingSubjectPretest] = useState(false);
+  const [subjectPretestResult, setSubjectPretestResult] = useState<any | null>(null);
+
+  // Change Password states
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // Chat BK states
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -111,6 +299,73 @@ export default function StudentDashboard() {
   const [activeTeacherId, setActiveTeacherId] = useState<number | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [loadingChat, setLoadingChat] = useState(false);
+
+  // Notifications state
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [dismissedNotifIds, setDismissedNotifIds] = useState<string[]>([]);
+
+  // Profile edit state
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [editAvatar, setEditAvatar] = useState("");
+  const [editClassId, setEditClassId] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+
+  // Dedicated Change Password states for Student
+  const [oldPasswordInput, setOldPasswordInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordMessage, setChangePasswordMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [showOldPass, setShowOldPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oldPasswordInput || !newPasswordInput) {
+      setChangePasswordMessage({ text: "Password lama dan password baru wajib diisi.", type: "error" });
+      return;
+    }
+    if (newPasswordInput !== confirmPasswordInput) {
+      setChangePasswordMessage({ text: "Konfirmasi password baru tidak cocok.", type: "error" });
+      return;
+    }
+    if (newPasswordInput.length < 6) {
+      setChangePasswordMessage({ text: "Password baru minimal 6 karakter.", type: "error" });
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    setChangePasswordMessage(null);
+
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oldPassword: oldPasswordInput,
+          newPassword: newPasswordInput,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setChangePasswordMessage({ text: "Password Anda berhasil diperbarui!", type: "success" });
+        setOldPasswordInput("");
+        setNewPasswordInput("");
+        setConfirmPasswordInput("");
+      } else {
+        setChangePasswordMessage({ text: json.message || "Gagal mengubah password.", type: "error" });
+      }
+    } catch {
+      setChangePasswordMessage({ text: "Terjadi kesalahan koneksi server.", type: "error" });
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
 
   const fetchChatMessages = async (teacherId: number) => {
     setLoadingChat(true);
@@ -158,39 +413,12 @@ export default function StudentDashboard() {
     }
   };
 
-  // AI Feedback states
-  const [latestFeedback, setLatestFeedback] = useState<string | null>(null);
-  const [expandedFeedbacks, setExpandedFeedbacks] = useState<
-    Record<number, boolean>
-  >({});
-
-  const toggleFeedback = (journalId: number) => {
-    setExpandedFeedbacks((prev) => ({
-      ...prev,
-      [journalId]: !prev[journalId],
-    }));
-  };
-
-  // Notifications state
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [notifications, setNotifications] = useState<string[]>([
-    "Selamat datang di DigiMind! Diagnosis awal Anda berhasil disimpan.",
-    "Lencana baru terbuka! 'Cyber Pioneer' telah ditambahkan ke profil Anda.",
-  ]);
-
-  // Profile edit state
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editUsername, setEditUsername] = useState("");
-  const [editAvatar, setEditAvatar] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMessage, setProfileMessage] = useState<string | null>(null);
-
   const handleOpenEditProfile = () => {
-    if (!student) return;
-    setEditName(student.name);
-    setEditUsername(student.username);
-    setEditAvatar(student.avatar || "");
+    if (!data?.student) return;
+    setEditName(data.student.name);
+    setEditUsername(data.student.username);
+    setEditAvatar(data.student.avatar || "");
+    setEditClassId(data.student.class_id ? String(data.student.class_id) : "");
     setIsEditingProfile(true);
     setProfileMessage(null);
   };
@@ -213,6 +441,10 @@ export default function StudentDashboard() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (newPassword && newPassword !== confirmPassword) {
+      setProfileMessage("Gagal: Konfirmasi password baru tidak cocok.");
+      return;
+    }
     setSavingProfile(true);
     setProfileMessage(null);
 
@@ -224,24 +456,17 @@ export default function StudentDashboard() {
           name: editName,
           username: editUsername,
           avatar: editAvatar,
+          class_id: editClassId || undefined,
+          password: newPassword || undefined
         }),
       });
 
       const json = await res.json();
       if (json.success) {
         setProfileMessage("Profil berhasil diperbarui!");
-        setData((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            student: {
-              ...prev.student,
-              name: json.student.name,
-              username: json.student.username,
-              avatar: json.student.avatar,
-            },
-          };
-        });
+        setNewPassword("");
+        setConfirmPassword("");
+        fetchDashboardData();
         setIsEditingProfile(false);
       } else {
         setProfileMessage(`Gagal: ${json.message}`);
@@ -253,7 +478,6 @@ export default function StudentDashboard() {
     }
   };
 
-  // Fetch all dashboard data
   const fetchDashboardData = useCallback(async () => {
     try {
       const res = await fetch("/api/student/dashboard");
@@ -279,7 +503,6 @@ export default function StudentDashboard() {
   }, [router]);
 
   useEffect(() => {
-    // 1. Client-side localStorage check for quick redirect
     const storedUser = localStorage.getItem("user");
     if (storedUser) {
       try {
@@ -297,12 +520,135 @@ export default function StudentDashboard() {
     return () => clearTimeout(timer);
   }, [fetchDashboardData, router]);
 
-  // Submit journal
+  // Handle Monthly SRQ Screening modal open
+  const handleOpenMonthlySrqModal = async () => {
+    setMonthlySrqQuiz(null);
+    setMonthlySrqAnswers({});
+    setMonthlySrqIndex(0);
+    setMonthlySrqResult(null);
+    setShowMonthlySrqModal(true);
+    setLoadingMonthlySrq(true);
+
+    try {
+      const res = await fetch("/api/student/quiz/pretest");
+      const json = await res.json();
+      if (json.success) {
+        setMonthlySrqQuiz(json.quiz);
+      } else {
+        alert(json.message || "Gagal memuat kuis SRQ-29.");
+      }
+    } catch (e) {
+      alert("Gagal terhubung ke server.");
+    } finally {
+      setLoadingMonthlySrq(false);
+    }
+  };
+
+  const handleSubmitMonthlySrq = async () => {
+    if (!monthlySrqQuiz) return;
+    const unanswered = monthlySrqQuiz.questions.filter((q: any) => !monthlySrqAnswers[q.id]);
+    if (unanswered.length > 0) {
+      alert(`Silakan jawab semua pertanyaan terlebih dahulu! Sisa ${unanswered.length} soal.`);
+      return;
+    }
+
+    setSubmittingMonthlySrq(true);
+    const formattedAnswers = Object.entries(monthlySrqAnswers).map(([qId, oId]) => ({
+      questionId: parseInt(qId),
+      optionId: oId,
+    }));
+
+    try {
+      const res = await fetch("/api/student/quiz/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quizId: monthlySrqQuiz.id,
+          answers: formattedAnswers
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setMonthlySrqResult(json.result);
+        await fetchDashboardData();
+      } else {
+        alert(json.message || "Gagal mengirim jawaban screening.");
+      }
+    } catch (e) {
+      alert("Terjadi kesalahan jaringan.");
+    } finally {
+      setSubmittingMonthlySrq(false);
+    }
+  };
+
+  // Handle Subject Pretest modal open
+  const handleOpenSubjectPretest = async (subject: Subject) => {
+    setActiveSubject(subject);
+    setSubjectQuiz(null);
+    setSubjectAnswers({});
+    setSubjectPretestIndex(0);
+    setSubjectPretestResult(null);
+    setShowSubjectPretestModal(true);
+    setLoadingSubjectQuiz(true);
+
+    try {
+      const res = await fetch(`/api/student/quiz/subject-pretest?subjectId=${subject.id}`);
+      const json = await res.json();
+      if (json.success) {
+        setSubjectQuiz(json.quiz);
+      } else {
+        alert(json.message || "Gagal memuat pretest mata pelajaran.");
+      }
+    } catch (e) {
+      alert("Gagal terhubung ke server.");
+    } finally {
+      setLoadingSubjectQuiz(false);
+    }
+  };
+
+  const handleSubmitSubjectPretest = async () => {
+    if (!subjectQuiz) return;
+    const unanswered = subjectQuiz.questions.filter((q: any) => !subjectAnswers[q.id]);
+    if (unanswered.length > 0) {
+      alert(`Silakan jawab semua pertanyaan terlebih dahulu! Sisa ${unanswered.length} soal.`);
+      return;
+    }
+
+    setSubmittingSubjectPretest(true);
+    const formattedAnswers = Object.entries(subjectAnswers).map(([qId, oId]) => ({
+      questionId: parseInt(qId),
+      optionId: oId,
+    }));
+
+    try {
+      const res = await fetch("/api/student/quiz/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quizId: subjectQuiz.id,
+          answers: formattedAnswers
+        }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setSubjectPretestResult(json.result);
+        await fetchDashboardData();
+      } else {
+        alert(json.message || "Gagal mengirim jawaban pretest.");
+      }
+    } catch (e) {
+      alert("Terjadi kesalahan jaringan.");
+    } finally {
+      setSubmittingSubjectPretest(false);
+    }
+  };
+
   const handleSubmitJournal = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingJournal(true);
     setJournalMessage(null);
-    setLatestFeedback(null);
     try {
       const res = await fetch("/api/student/journal", {
         method: "POST",
@@ -311,23 +657,20 @@ export default function StudentDashboard() {
           moodScore,
           notes: journalNotes,
           activities: journalActivities,
+          date: selectedFillDate
         }),
       });
       const json = await res.json();
       if (json.success) {
         setJournalNotes("");
         setJournalActivities("");
-        setJournalMessage("Jurnal harian berhasil disimpan!");
-        if (json.journal && json.journal.ai_feedback) {
-          setLatestFeedback(json.journal.ai_feedback);
-        }
-        if (json.badgeAwarded) {
-          setNotifications((prev) => [
-            `Lencana Baru! Anda membuka lencana '${json.badgeAwarded}' karena menulis jurnal pertama Anda.`,
-            ...prev,
-          ]);
-        }
+        setShowFillModal(false);
+        setJournalMessage(null);
         await fetchDashboardData();
+        if (json.journal) {
+          setSelectedDetailJournal(json.journal);
+          setShowDetailModal(true);
+        }
       } else {
         setJournalMessage(`Gagal: ${json.message}`);
       }
@@ -338,10 +681,9 @@ export default function StudentDashboard() {
     }
   };
 
-  // Logout
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/login", { method: "DELETE" }); // Assuming DELETE logs out
+      await fetch("/api/auth/login", { method: "DELETE" });
       localStorage.removeItem("user");
       router.push("/");
     } catch {
@@ -349,22 +691,12 @@ export default function StudentDashboard() {
     }
   };
 
-  // Generate ASCII block progress bar (e.g. ████▒▒ 40%)
-  const getProgressBlocks = (percent: number) => {
-    const totalBlocks = 10;
-    const filledBlocks = Math.round(percent / 10);
-    const emptyBlocks = totalBlocks - filledBlocks;
-    return "".repeat(filledBlocks) + "".repeat(emptyBlocks) + ` ${percent}%`;
-  };
-
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#03000a] text-white">
+      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-900">
         <div className="text-center space-y-4">
-          <div className="h-12 w-12 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-zinc-400">
-            Menyelaraskan Dashboard Anda...
-          </p>
+          <div className="h-12 w-12 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-zinc-600 font-medium">Menyelaraskan Dashboard Anda...</p>
         </div>
       </div>
     );
@@ -372,14 +704,14 @@ export default function StudentDashboard() {
 
   if (error && !data) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#C4E2F5] text-[#0f3b5c] p-6">
-        <div className="max-w-md w-full bg-red-950/10 border border-red-500/20 rounded-2xl p-6 text-center space-y-4">
-          <span className="text-3xl">⚠️</span>
-          <h2 className="text-xl font-bold">Koneksi Gagal</h2>
-          <p className="text-xs text-zinc-400">{error}</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-white text-zinc-900 p-6">
+        <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-2xl p-6 text-center space-y-4">
+          <AlertTriangle className="w-10 h-10 text-red-500 mx-auto" />
+          <h2 className="text-xl font-bold text-red-700">Koneksi Gagal</h2>
+          <p className="text-xs text-zinc-600">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-xs font-semibold"
+            className="w-full py-2.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-xs font-semibold text-white transition cursor-pointer"
           >
             Coba Lagi
           </button>
@@ -388,18 +720,16 @@ export default function StudentDashboard() {
     );
   }
 
-  if (!data || !data.student) {
-    return null;
-  }
+  if (!data || !data.student) return null;
 
-  const {
-    student,
-    modules,
-    completedModuleIds,
-    badges,
-    journals,
-    leaderboard,
-  } = data;
+  const { student, modules, completedModuleIds, badges, journals, leaderboard, subjects } = data;
+
+  const getModuleProgress = (moduleId: number) => {
+    if (data?.moduleProgressMap && typeof data.moduleProgressMap[moduleId] === "number") {
+      return data.moduleProgressMap[moduleId];
+    }
+    return completedModuleIds.includes(moduleId) ? 100 : 0;
+  };
 
   const recentJournals = journals.filter((journal) => {
     const journalDate = new Date(journal.logged_at);
@@ -409,85 +739,201 @@ export default function StudentDashboard() {
   });
 
   const totalWeeklyJournals = recentJournals.length;
-  const positiveMoodCount = recentJournals.filter(
-    (journal) => journal.mood_score >= 4,
-  ).length;
-  const neutralMoodCount = recentJournals.filter(
-    (journal) => journal.mood_score === 3,
-  ).length;
-  const lowMoodCount = recentJournals.filter(
-    (journal) => journal.mood_score <= 2,
-  ).length;
-  const moodPercent =
-    totalWeeklyJournals > 0
-      ? Math.round((positiveMoodCount / totalWeeklyJournals) * 100)
-      : 0;
+  const positiveMoodCount = recentJournals.filter((j) => j.mood_score >= 4).length;
+  const neutralMoodCount = recentJournals.filter((j) => j.mood_score === 3).length;
+  const lowMoodCount = recentJournals.filter((j) => j.mood_score <= 2).length;
+  const moodPercent = totalWeeklyJournals > 0 ? Math.round((positiveMoodCount / totalWeeklyJournals) * 100) : 0;
   const positiveMoodPercent = moodPercent;
-  const neutralMoodPercent =
-    totalWeeklyJournals > 0
-      ? Math.round((neutralMoodCount / totalWeeklyJournals) * 100)
-      : 0;
-  const lowMoodPercent =
-    totalWeeklyJournals > 0
-      ? Math.round((lowMoodCount / totalWeeklyJournals) * 100)
-      : 0;
-  const todayJournal = recentJournals.some(
-    (journal) =>
-      new Date(journal.logged_at).toDateString() === new Date().toDateString(),
-  );
-  const journalAdvice =
-    totalWeeklyJournals > 0
-      ? `Mood positif muncul di ${moodPercent}% catatan jurnal minggu ini.`
-      : "Isi jurnal hari ini untuk melihat tren moodmu dan dapatkan saran AI yang lebih akurat.";
+  const neutralMoodPercent = totalWeeklyJournals > 0 ? Math.round((neutralMoodCount / totalWeeklyJournals) * 100) : 0;
+  const lowMoodPercent = totalWeeklyJournals > 0 ? Math.round((lowMoodCount / totalWeeklyJournals) * 100) : 0;
+  const todayJournal = recentJournals.some((j) => new Date(j.logged_at).toDateString() === new Date().toDateString());
+
+  let dominantMoodPercent = 0;
+  let dominantMoodLabel = "Belum Ada";
+  let dominantMoodColor = "text-zinc-500";
+  if (totalWeeklyJournals > 0) {
+    if (positiveMoodCount >= neutralMoodCount && positiveMoodCount >= lowMoodCount) {
+      dominantMoodPercent = positiveMoodPercent;
+      dominantMoodLabel = "Positif";
+      dominantMoodColor = "text-emerald-600";
+    } else if (neutralMoodCount >= positiveMoodCount && neutralMoodCount >= lowMoodCount) {
+      dominantMoodPercent = neutralMoodPercent;
+      dominantMoodLabel = "Biasa";
+      dominantMoodColor = "text-amber-600";
+    } else {
+      dominantMoodPercent = lowMoodPercent;
+      dominantMoodLabel = "Perhatian";
+    }
+  }
+
+  // Calculation for Weekly Mood Bar Chart (Senin - Minggu)
+  const todayDate = new Date();
+  const dayOfWeek = todayDate.getDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const mondayDate = new Date(todayDate);
+  mondayDate.setDate(todayDate.getDate() + mondayOffset);
+
+  const dayNames = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+  const weeklyMoodBars = dayNames.map((dayLabel, index) => {
+    const d = new Date(mondayDate);
+    d.setDate(mondayDate.getDate() + index);
+    const dateStr = d.toISOString().split("T")[0];
+    const isToday =
+      d.getFullYear() === todayDate.getFullYear() &&
+      d.getMonth() === todayDate.getMonth() &&
+      d.getDate() === todayDate.getDate();
+    
+    const todayReset = new Date().setHours(0,0,0,0);
+    const cellReset = new Date(d).setHours(0,0,0,0);
+    const isFuture = cellReset > todayReset;
+
+    const journal = (journals || []).find((j: any) => {
+      const jd = new Date(j.logged_at);
+      return (
+        jd.getFullYear() === d.getFullYear() &&
+        jd.getMonth() === d.getMonth() &&
+        jd.getDate() === d.getDate()
+      );
+    });
+
+    const moodEmoji = journal ? MOOD_EMOJIS.find((m) => m.score === journal.mood_score) : null;
+
+    return {
+      dayLabel,
+      dateStr,
+      isToday,
+      isFuture,
+      journal,
+      moodScore: journal ? journal.mood_score : 0,
+      moodEmoji,
+    };
+  });
+
+  // Helper calculations for Home tab cards
+  const allAccessibleModules: any[] = [];
+  (subjects || []).forEach((sub: any) => {
+    // Only include subject modules if pretest has been taken OR if no pretest required
+    if (sub.hasPretest || !sub.pretestQuizId) {
+      if (sub.modules && Array.isArray(sub.modules)) {
+        sub.modules.forEach((mod: any) => {
+          if (!allAccessibleModules.some((m) => m.id === mod.id)) {
+            allAccessibleModules.push({ ...mod, subjectName: sub.name });
+          }
+        });
+      }
+    }
+  });
+
+  const totalAccessibleCount = allAccessibleModules.length;
+  const completedAccessibleCount = allAccessibleModules.filter((m) => completedModuleIds.includes(m.id)).length;
+  const recommendedModules = allAccessibleModules
+    .filter((m) => !completedModuleIds.includes(m.id))
+    .slice(0, 3);
+
+  const dynamicNotifications: { id: string; title: string; desc: string; tabTarget: DashboardTab; icon: React.ReactNode; color: string }[] = [];
+
+  // 1. Anjuran Jurnal Harian
+  if (!todayJournal) {
+    dynamicNotifications.push({
+      id: "journal_today",
+      title: "Anjuran Jurnal Harian",
+      desc: "Kamu belum mengisi perasaan jurnal hari ini. Yuk catat emosimu!",
+      tabTarget: "jurnal",
+      icon: <FileText className="w-4 h-4 text-amber-500 shrink-0" />,
+      color: "bg-amber-50 border-amber-200 text-amber-900"
+    });
+  }
+
+  // 2. Anjuran Skrining Bulanan
+  const hasScreening = (completedModuleIds && completedModuleIds.length > 0) || (journals && journals.length > 3);
+  if (!hasScreening) {
+    dynamicNotifications.push({
+      id: "screening_monthly",
+      title: "Anjuran Skrining Bulanan",
+      desc: "Skrining awal kesehatan mental bulanan Anda perlu diisi untuk pemantauan.",
+      tabTarget: "screening",
+      icon: <ClipboardList className="w-4 h-4 text-[#5A77DF] shrink-0" />,
+      color: "bg-blue-50 border-blue-200 text-blue-900"
+    });
+  }
+
+  // 3. Anjuran Belajar Modul Pembelajaran
+  if (recommendedModules.length > 0) {
+    dynamicNotifications.push({
+      id: "module_recommendation",
+      title: "Anjuran Belajar Modul",
+      desc: `Ada ${recommendedModules.length} modul pembelajaran disarankan untuk dibaca hari ini.`,
+      tabTarget: "modul",
+      icon: <BookOpen className="w-4 h-4 text-emerald-500 shrink-0" />,
+      color: "bg-emerald-50 border-emerald-200 text-emerald-900"
+    });
+  }
+
+  // 4. Pesan dari Guru BK
+  if (chatMessages && chatMessages.length > 0) {
+    const lastMsg = chatMessages[chatMessages.length - 1];
+    if (lastMsg && lastMsg.sender_role === "teacher") {
+      dynamicNotifications.push({
+        id: `chat_bk_${lastMsg.id}`,
+        title: "Pesan dari Guru BK",
+        desc: `"${lastMsg.content || "Guru BK memberikan bimbingan konseling"}"`,
+        tabTarget: "chat_bk",
+        icon: <MessageSquare className="w-4 h-4 text-violet-500 shrink-0" />,
+        color: "bg-violet-50 border-violet-200 text-violet-900"
+      });
+    }
+  }
+
+  const activeNotifications = dynamicNotifications.filter(n => !dismissedNotifIds.includes(n.id));
 
   return (
-    <div className="student-dashboard-page relative flex min-h-screen flex-col bg-[#03000a] text-white font-sans pb-24 md:pb-8">
-      {/* Decorative Orbs */}
-      <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-violet-900/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
+    <div className="student-dashboard-page relative flex min-h-screen flex-col bg-white text-zinc-900 font-sans pb-24 md:pb-8 w-full max-w-full overflow-x-hidden">
+      {/* Decorative Orbs - Clipped */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-[#5A77DF]/5 blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-[#3E53A2]/5 blur-[120px]" />
+      </div>
 
-      {/* TOP NAVBAR (Notification & Title) */}
-      <header className="z-10 w-full max-w-7xl mx-auto px-4 py-4 flex items-center justify-between border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 bg-gradient-to-tr from-violet-600 to-indigo-600 rounded-lg flex items-center justify-center font-bold text-sm shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-            D
-          </div>
-          <span className="font-extrabold tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-zinc-200 to-zinc-400 uppercase text-xs">
-            DigiMind
-          </span>
+      {/* TOP NAVBAR */}
+      <header className="sticky top-0 z-50 w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between border-b border-zinc-200/80 bg-white/90 backdrop-blur-md">
+        <div className="flex items-center gap-2 shrink-0">
+          <img src="/logo.png" alt="DigiMind" className="h-9 sm:h-12 w-auto max-w-[130px] sm:max-w-none object-contain" />
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Student Profile Info on Navbar */}
+        <div className="flex items-center gap-3 sm:gap-6 shrink-0">
           {student && (
             <button
               type="button"
               onClick={() => setActiveTab("profil")}
-              className="flex items-center gap-2.5 text-left hover:opacity-85 transition cursor-pointer"
+              className="flex items-center gap-2.5 text-left hover:opacity-90 transition cursor-pointer group"
             >
-              <div className="hidden sm:block">
-                <div className="text-xs font-bold text-zinc-100 line-clamp-1">
-                  {student.name}
-                </div>
-              </div>
               {student.avatar ? (
-                <div className="h-9 w-9 rounded-xl overflow-hidden border border-[#1591DC]/20 bg-[#1591DC]/10 flex items-center justify-center text-lg select-none">
-                  {student.avatar.startsWith("data:") ||
-                  student.avatar.startsWith("http") ? (
-                    <img
-                      src={student.avatar}
-                      alt="Avatar"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    student.avatar
-                  )}
+                <div className="relative h-9 w-9 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
+                  <div className="h-full w-full rounded-full overflow-hidden bg-white flex items-center justify-center">
+                    {student.avatar.startsWith("data:") || student.avatar.startsWith("http") ? (
+                      <img src={student.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="h-full w-full bg-amber-400 text-white font-black flex items-center justify-center text-xs sm:text-sm">
+                        {student.avatar}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : (
-                <div className="h-9 w-9 rounded-xl bg-violet-600/10 border border-violet-500/20 text-violet-400 font-bold flex items-center justify-center text-xs">
-                  {student.name.charAt(0).toUpperCase()}
+                <div className="relative h-9 w-9 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
+                  <div className="h-full w-full rounded-full bg-gradient-to-br from-[#5A77DF] to-[#3E53A2] text-white font-extrabold flex items-center justify-center text-xs sm:text-sm shadow-inner">
+                    {student.name.charAt(0).toUpperCase()}
+                  </div>
                 </div>
               )}
+              <div className="hidden sm:block">
+                <h4 className="text-sm font-extrabold text-zinc-900 leading-tight group-hover:text-[#5A77DF] transition-colors">
+                  {student.name}
+                </h4>
+                <p className="text-xs font-semibold text-zinc-400 leading-tight">
+                  Kelas {student.class}
+                </p>
+              </div>
             </button>
           )}
 
@@ -495,489 +941,749 @@ export default function StudentDashboard() {
             <button
               type="button"
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative h-9 w-9 border border-white/5 bg-white/[0.02] rounded-xl flex items-center justify-center hover:bg-white/[0.06] transition cursor-pointer"
+              className="relative p-2 rounded-full text-zinc-900 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center"
+              title="Pemberitahuan"
             >
-              🔔
-              {notifications.length > 0 && (
-                <span className="absolute top-2.5 right-2.5 h-2 w-2 rounded-full bg-violet-500 animate-ping" />
+              <Bell className="w-5 h-5 text-zinc-900 fill-zinc-900" />
+              {activeNotifications.length > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full bg-rose-500 border-2 border-white shadow-xs" />
               )}
             </button>
 
-            {/* Notifications Dropdown */}
-            {showNotifications &&
-              createPortal(
-                <div className="fixed top-16 right-56 w-80 rounded-2xl border border-white/5 bg-white/[0.02] p-4 shadow-2xl backdrop-blur-xl z-[99999] space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                    Pemberitahuan
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-[calc(100vw-32px)] sm:w-84 max-w-xs rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl z-[9999] space-y-3 text-left animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-zinc-800 flex items-center gap-1.5">
+                    <Bell className="w-3.5 h-3.5 text-[#5A77DF]" /> Pemberitahuan
                   </h3>
+                  {activeNotifications.length > 0 && (
+                    <span className="text-4xs font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] px-2 py-0.5 rounded-full">
+                      {activeNotifications.length} Baru
+                    </span>
+                  )}
+                </div>
 
-                  <div className="divide-y divide-white/5 max-h-60 overflow-y-auto">
-                    {notifications.map((notif, i) => (
-                      <div key={i} className="py-2.5 text-2xs text-zinc-300">
-                        {notif}
+                <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar">
+                  {activeNotifications.length > 0 ? (
+                    activeNotifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        className={`rounded-xl border p-3 text-2xs space-y-1.5 transition ${notif.color}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold">
+                            {notif.icon}
+                            <span>{notif.title}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDismissedNotifIds((prev) => [...prev, notif.id]);
+                            }}
+                            className="text-3xs text-zinc-400 hover:text-zinc-700 font-extrabold px-1 cursor-pointer"
+                            title="Tandai Selesai / Dibaca"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <p className="text-3xs leading-relaxed text-zinc-700">{notif.desc}</p>
+                        <div className="pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(notif.tabTarget);
+                              setShowNotifications(false);
+                            }}
+                            className="text-4xs font-extrabold text-[#3E53A2] hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Lakukan Sekarang</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>,
-                document.body,
-              )}
+                    ))
+                  ) : (
+                    <div className="py-6 text-center space-y-1">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                      <p className="text-xs font-bold text-zinc-700">Semua Tugas Selesai!</p>
+                      <p className="text-3xs text-zinc-500">Tidak ada notifikasi anjuran belajar atau pengisian jurnal saat ini.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       {/* MAIN CONTAINER */}
-      <div className="z-10 w-full max-w-7xl mx-auto px-4 py-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          <aside className="w-full lg:w-64 xl:w-72 shrink-0">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 backdrop-blur-xl sticky top-4 space-y-2">
-              <div className="px-2 pb-2 border-b border-white/5">
-                <p className="text-2xs font-bold uppercase tracking-[0.25em] text-zinc-500">
-                  Menu
-                </p>
-                <h3 className="text-sm font-semibold text-zinc-100">
-                  Dashboard
-                </h3>
+      <div className="relative z-0 w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* DESKTOP SIDEBAR (Visible on lg screens) */}
+          <aside className="hidden lg:block w-64 xl:w-72 shrink-0 lg:sticky lg:top-20 self-start z-30">
+            <div className="rounded-2xl border border-[#5A77DF] bg-[#5A77DF] p-4 shadow-lg space-y-2 text-white">
+              <div className="px-2 pb-2 border-b border-white/20">
+                <p className="text-2xs font-extrabold uppercase tracking-[0.25em] text-white/70 font-mono">Menu</p>
+                <h3 className="text-sm font-black text-white">Dashboard</h3>
               </div>
               {NAV_ITEMS.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-semibold transition ${
+                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
                     activeTab === item.id
-                      ? "border-violet-500/30 bg-violet-500/10 text-violet-300"
-                      : "border-transparent bg-transparent text-zinc-400 hover:border-white/10 hover:bg-white/[0.03] hover:text-zinc-200"
+                      ? "border-white bg-white text-[#3E53A2] shadow-md"
+                      : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
                   }`}
                 >
-                  <span className="text-base">{item.icon}</span>
+                  <span className="shrink-0">{item.icon}</span>
                   <span>{item.label}</span>
                 </button>
               ))}
             </div>
           </aside>
 
-          <div className="flex-1">
-            <main className="w-full">
-              {/* ========================================================
-            TAB 1: HOME (DASHBOARD UTAMA)
-            ======================================================== */}
-              {activeTab === "home" && (
-                <div className="space-y-6">
-                  {/* Header Profile Card */}
-                  <div className="relative rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-6 shadow-2xl backdrop-blur-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 overflow-hidden">
-                    <div className="absolute top-0 right-0 h-40 w-40 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
+          {/* MOBILE BOTTOM NAVIGATION BAR (Fixed at bottom on mobile/tablet screens) */}
+          <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-zinc-200/90 shadow-2xl px-1 py-1.5 flex items-center justify-around">
+            {NAV_ITEMS.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+                    isActive ? "text-[#5A77DF] font-extrabold" : "text-zinc-500 hover:text-zinc-800"
+                  }`}
+                >
+                  <span className={`p-1 rounded-lg ${isActive ? "bg-[#5A77DF]/15 text-[#5A77DF]" : ""}`}>
+                    {item.icon}
+                  </span>
+                  <span className="text-[9px] sm:text-[10px] leading-tight font-semibold mt-0.5 truncate max-w-[56px] sm:max-w-[70px]">
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
 
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-3">
-                        {student.avatar ? (
-                          <div className="h-12 w-12 rounded-full overflow-hidden border border-violet-500/20 bg-violet-600/5 flex items-center justify-center text-2xl select-none shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-                            {student.avatar.startsWith("data:") ||
-                            student.avatar.startsWith("http") ? (
-                              <img
-                                src={student.avatar}
-                                alt="Avatar"
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              student.avatar
-                            )}
+          <div className="flex-1 min-w-0 w-full">
+            <main className="w-full">
+              {/* TAB 1: HOME */}
+              {activeTab === "home" && (
+                <div className="space-y-6 animate-fadeIn">
+                  {/* Hero Banner Blue Card */}
+                  <div className="relative rounded-3xl bg-gradient-to-r from-[#5A77DF] via-[#4A64CA] to-[#3E53A2] p-6 sm:p-8 text-white shadow-xl">
+                    {/* Floating Decorative Orbs & Sparkles */}
+                    <div className="pointer-events-none absolute -right-10 -top-10 h-64 w-64 rounded-full bg-white/10 blur-2xl overflow-hidden" />
+                    <div className="pointer-events-none absolute right-1/3 bottom-0 h-40 w-40 rounded-full bg-blue-300/20 blur-xl overflow-hidden" />
+                    
+                    <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                      {/* Left Column: Text & Date */}
+                      <div className="space-y-3 max-w-xl text-left">
+                        <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-3xs font-extrabold text-white backdrop-blur-md border border-white/20">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>{new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</span>
+                        </div>
+                        
+                        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white drop-shadow-xs">
+                          Selamat Datang Kembali, {student.name.split(" ")[0]}! 
+                        </h1>
+                        
+                        <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-medium">
+                          Selalu terhubung di portal siswa Anda. Pantau progres belajar dan perkembangan kesehatan emosional Anda secara real-time di DigiMind!
+                        </p>
+
+                        <div className="pt-2 flex flex-wrap items-center gap-2.5">
+                          <div className="rounded-xl bg-white/20 backdrop-blur-md border border-white/25 px-3 py-1.5 text-3xs font-extrabold text-white flex items-center gap-2">
+                            <BookOpen className="w-3.5 h-3.5 text-cyan-300" />
+                            <span>{completedAccessibleCount} dari {totalAccessibleCount} Modul Selesai</span>
                           </div>
-                        ) : (
-                          <div className="h-12 w-12 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 flex items-center justify-center font-bold text-lg shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-                            {student.name.charAt(0).toUpperCase()}
+                          <div className="rounded-xl bg-white/20 backdrop-blur-md border border-white/25 px-3 py-1.5 text-3xs font-extrabold text-white flex items-center gap-2">
+                            <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Kelas {student.class}</span>
                           </div>
-                        )}
-                        <div>
-                          <h2 className="text-lg font-extrabold text-zinc-100">
-                            {student.name}
-                          </h2>
-                          <p className="text-2xs text-zinc-400">
-                            NIS: {student.nis} • Kelas: {student.class}
-                          </p>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        <span className="px-3 py-1 rounded-full text-3xs font-extrabold tracking-wider bg-violet-500/10 text-violet-300 border border-violet-500/20 uppercase">
-                          Literasi: {student.literacy_level}
-                        </span>
-                        <span className="px-3 py-1 rounded-full text-3xs font-extrabold tracking-wider bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 uppercase">
-                          Mental: {student.mental_level}
-                        </span>
-                        {student.risk_flag && (
-                          <span className="px-3 py-1 rounded-full text-3xs font-extrabold tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/20 uppercase">
-                            ⚠️ Butuh Pendampingan
-                          </span>
-                        )}
+                      {/* Right Column: Real 3D Person Character Illustration */}
+                      <div className="relative shrink-0 flex items-center justify-end w-full md:w-auto mt-2 md:mt-0">
+                        <div className="relative flex items-center justify-center">
+                          <img 
+                            src="/digimind-hero-3d.png" 
+                            alt="DigiMind 3D Illustration" 
+                            className="h-48 sm:h-56 md:h-64 lg:h-72 w-auto object-contain drop-shadow-2xl transform hover:scale-105 transition duration-300 pointer-events-none select-none -my-2 sm:-my-4 md:-my-5"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-5 gap-6">
-                    <div className="flex md:col-span-2 items-center gap-5 rounded-xl border border-white/5 bg-white/[0.02] p-5">
-                      <div
-                        className="relative flex h-28 w-28 items-center justify-center rounded-full"
-                        style={{
-                          background: `conic-gradient(
-        #8b5cf6 ${student.module_progress}%,
-        rgba(255,255,255,.08) ${student.module_progress}% 100%
-      )`,
-                        }}
-                      >
-                        <div className="absolute inset-2 rounded-full bg-[#0F172A]" />
 
-                        <div className="relative text-center">
-                          <p className="text-2xl font-bold text-white">
-                            {student.module_progress}%
-                          </p>
-                          <p className="text-[10px] uppercase tracking-wider text-zinc-400">
-                            Progress
-                          </p>
+                  {/* Dashboard Main 2-Column Grid with CSS Grid Stretch */}
+                  <div className="grid grid-cols-1 md:grid-cols-6 gap-6 items-stretch">
+                    {/* Left Column (md:col-span-2): Status Mental, Progres Belajar, Screening Bulanan */}
+                    <div className="md:col-span-2 space-y-4 flex flex-col justify-between">
+                      {/* Card 1: Status Mental Siswa */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2 shrink-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Status Mental Siswa</span>
+                          <span className="text-3xs text-zinc-500 font-mono font-bold">Ringkasan</span>
+                        </div>
+                        <div className="px-3.5 py-2.5 rounded-xl bg-[#5A77DF]/10 border border-[#5A77DF]/20 text-[14px] font-extrabold text-[#3E53A2] uppercase leading-relaxed">
+                          {student.mental_level}
                         </div>
                       </div>
 
-                      <div className="flex-1 space-y-4">
-                        <div>
-                          <p className="text-base mb-2 font-bold uppercase tracking-widest text-violet-300">
-                            Progres Belajar
-                          </p>
-
-                          <p className="mt-1 text-sm text-zinc-300">
-                            {completedModuleIds.length} dari {modules.length}{" "}
-                            modul selesai
-                          </p>
+                      {/* Card 2: Progres Belajar */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2 shrink-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Modul Belajar</span>
+                          <span className="text-3xs text-zinc-500 font-mono font-bold">{student.module_progress}% Progress</span>
                         </div>
-
-                        {/* <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-indigo-500"
-                            style={{ width: `${student.module_progress}%` }}
-                          />
-                        </div> */}
-                      </div>
-                    </div>
-                    <div className="rounded-2xl md:col-span-3 border border-[#1591DC]/20 bg-gradient-to-br from-white/[0.03] to-white/[0.01] p-5 backdrop-blur-xl space-y-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-base font-semibold uppercase text-emerald-300">
-                            Status Jurnal Minggu Ini
-                          </p>
-                          {/* <h3 className="mt-1 text-sm font-semibold text-zinc-100">Persentase mood jurnalmu {moodPercent}%</h3>
-                  <p className="mt-2 text-xs leading-relaxed text-zinc-400">{journalAdvice}</p> */}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setActiveTab("jurnal")}
-                          className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-2xs font-bold text-emerald-300 transition hover:bg-emerald-500/20"
-                        >
-                          {todayJournal ? "Lihat Jurnal" : "Isi Jurnal"}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex items-center gap-4">
                           <div
-                            className="relative flex h-24 w-24 items-center justify-center rounded-full"
+                            className="relative flex h-24 w-24 items-center justify-center rounded-full shrink-0 shadow-inner"
                             style={{
-                              background: `conic-gradient(#34d399 ${moodPercent}%, #fbbf24 ${moodPercent}% ${moodPercent + neutralMoodPercent}%, #f87171 ${moodPercent + neutralMoodPercent}% 100%)`,
+                              background: `conic-gradient(#5A77DF ${student.module_progress}%, #e2e8f0 ${student.module_progress}% 100%)`,
                             }}
                           >
-                            <div className="absolute inset-2.5 rounded-full " />
+                            <div className="absolute inset-1 rounded-full bg-white" />
                             <div className="relative text-center">
-                              {/* <p className="text-lg font-semibold text-[#0f3b5c]">{moodPercent}%</p> */}
-                              {/* <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">positif</p> */}
+                              <p className="text-base font-black text-zinc-900">{student.module_progress}%</p>
                             </div>
                           </div>
-
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                              <span className="text-xs text-zinc-300">
-                                Mood Positif • {positiveMoodPercent}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                              <span className="text-xs text-zinc-300">
-                                Biasa • {neutralMoodPercent}%
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                              <span className="text-xs text-zinc-300">
-                                Butuh Perhatian • {lowMoodPercent}%
-                              </span>
-                            </div>
+                          <div className="space-y-0.5">
+                            <p className="text-[15px] font-bold text-zinc-900">Progres Pembelajaran</p>
+                            <p className="text-2xs text-zinc-600 font-medium">
+                              {completedAccessibleCount} dari {totalAccessibleCount} modul selesai
+                            </p>
+                            {/* <p className="text-[10px] text-zinc-400">Total modul aktif pada kelas Anda.</p> */}
                           </div>
                         </div>
-
-                        {/* <div className="rounded-xl border border-[#1591DC]/20 bg-white/[0.01] px-3 py-2 text-right">
-                        <p className="text-3xs uppercase tracking-wider text-zinc-500">
-                          Rincian minggu ini
-                        </p>
-                        <p className="mt-1 text-xs text-zinc-400">
-                          {positiveMoodPercent}% positif
-                        </p>
-                        <p className="text-xs text-zinc-400">
-                          {neutralMoodPercent}% biasa
-                        </p>
-                        <p className="text-xs text-zinc-400">
-                          {" "}
-                          {lowMoodPercent}% butuh perhatian
-                        </p>
-                      </div> */}
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Grid Layout for Widgets */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Recommendation Widget */}
-                    <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-xl flex flex-col justify-between space-y-4">
-                      <div>
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-violet-400 mb-2">
-                          Rekomendasi AI Untuk Anda
-                        </h3>
-                        <p className="text-xs text-zinc-400 leading-relaxed mb-4">
-                          Berdasarkan asesmen literasi dan mental digital Anda,
-                          berikut modul yang disarankan untuk diselesaikan
-                          terlebih dahulu:
-                        </p>
-
-                        {modules.length > 0 ? (
-                          <div className="space-y-2.5">
-                            {modules.slice(0, 2).map((m) => {
-                              const isDone = completedModuleIds.includes(m.id);
-                              return (
-                                <div
-                                  key={m.id}
-                                  onClick={() => {
-                                    router.push(`/student/module/${m.id}`);
-                                  }}
-                                  className="flex items-center justify-between p-3.5 rounded-xl border border-white/5 bg-white/[0.01] hover:border-violet-500/40 hover:bg-white/[0.03] transition cursor-pointer"
-                                >
-                                  <div className="space-y-1">
-                                    <h4 className="text-xs font-semibold text-zinc-100">
-                                      {m.title}
-                                    </h4>
-                                    <span className="text-3xs px-2 py-0.5 rounded-full bg-white/5 text-zinc-400">
-                                      {m.category.name}
-                                    </span>
-                                  </div>
-                                  <span
-                                    className={`text-2xs font-extrabold px-2.5 py-1 rounded-lg ${
-                                      isDone
-                                        ? "text-emerald-400 bg-emerald-400/15"
-                                        : "text-violet-400 bg-violet-400/15"
-                                    }`}
-                                  >
-                                    {isDone ? "Selesai" : "Mulai"}
-                                  </span>
-                                </div>
-                              );
-                            })}
+                      {/* Card 3: Screening Bulanan (Flex-1 Auto-Stretch to align 100% flush with Badge card) */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-4 flex-1 flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className={`text-3xs px-2.5 py-0.5 rounded-full font-extrabold uppercase border ${
+                              data?.monthlyScreening?.isCompletedThisMonth
+                                ? "bg-[#5A77DF]/10 text-[#3E53A2] border-[#5A77DF]/30"
+                                : "bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse"
+                            }`}>
+                              {data?.monthlyScreening?.isCompletedThisMonth ? (
+                                <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Sudah Screening</span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-amber-500" /> Belum Screening</span>
+                              )}
+                            </span>
+                            <span className="text-3xs text-zinc-500 font-mono font-bold">Bulan Ini</span>
                           </div>
-                        ) : (
-                          <p className="text-2xs text-zinc-500 italic">
-                            Belum ada modul yang ditambahkan ke level ini.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Badges and Leaderboard Widget */}
-                    <div className="flex flex-col gap-6">
-                      {/* Badge Terbaru */}
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-xl text-center space-y-3">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 text-left pb-1.5 border-b border-white/5">
-                          Lencana Terbaru
-                        </h3>
-
-                        {badges.unlocked.length > 0 ? (
-                          <div className="space-y-2 flex flex-col items-center">
-                            <div className="h-16 w-16 bg-gradient-to-tr from-violet-500/20 to-indigo-500/20 rounded-full border border-violet-500/40 flex items-center justify-center text-3xl shadow-[0_0_15px_rgba(139,92,246,0.15)]">
-                              🏆
-                            </div>
-                            <h4 className="text-xs font-bold text-zinc-200">
-                              {badges.unlocked[badges.unlocked.length - 1].name}
-                            </h4>
-                            <p className="text-3xs text-zinc-400 px-4">
-                              {
-                                badges.unlocked[badges.unlocked.length - 1]
-                                  .description
-                              }
+                          <div className="space-y-1">
+                            <h3 className="text-base font-bold text-zinc-900">
+                              {data?.monthlyScreening?.isCompletedThisMonth ? "Status Mental Terkini" : "Evaluasi Kesehatan Mental Bulanan"}
+                            </h3>
+                            <p className="text-2xs text-zinc-700 leading-relaxed">
+                              {data?.monthlyScreening?.isCompletedThisMonth
+                                ? `Status mental periode ${indonesianMonths[new Date().getMonth()]} ${new Date().getFullYear()} tercatat: "${student.mental_level}". Hasil tersimpan aman di database.`
+                                : "Yuk luangkan 3-5 menit untuk mengisi 29 pertanyaan SRQ-29 bulan ini agar kondisi emosionalmu selalu terpantau."}
                             </p>
                           </div>
-                        ) : (
-                          <div className="py-4 text-3xs text-zinc-500 italic">
-                            Belum ada lencana yang terbuka.
-                          </div>
-                        )}
-                      </div>
+                        </div>
 
-                      {/* Leaderboard Sehat */}
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-xl space-y-3 flex-1 flex flex-col justify-between">
-                        <div>
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 pb-1.5 border-b border-white/5">
-                            Peringkat Sehat
-                          </h3>
-                          <p className="text-3xs text-zinc-400 pt-2 leading-relaxed">
-                            Mengukur progres belajar adaptif Anda dibandingkan
-                            teman-teman seangkatan.
-                          </p>
-                        </div>
-                        <div className="py-2 text-center">
-                          <span className="text-3xl font-extrabold text-indigo-400 tracking-tight">
-                            #{leaderboard.rank}
-                          </span>
-                          <span className="text-zinc-500 text-xs">
-                            {" "}
-                            dari {leaderboard.total}
-                          </span>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (data?.monthlyScreening?.isCompletedThisMonth) {
+                              setActiveTab("screening");
+                            } else {
+                              handleOpenMonthlySrqModal();
+                            }
+                          }}
+                          className="w-full rounded-xl py-3 text-xs font-extrabold transition text-center cursor-pointer bg-[#5A77DF] hover:bg-[#3E53A2] text-white shadow-sm mt-2"
+                        >
+                          {data?.monthlyScreening?.isCompletedThisMonth ? "Lihat Riwayat & Detail Screening" : "▶ Mulai Screening Bulanan (SRQ-29)"}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* ========================================================
-            TAB 2: MODUL (BELAJAR LEVEL-ADAPTIF)
-            ======================================================= */}
-              {activeTab === "modul" && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Modul Belajar Adaptif
-                    </h2>
-                    <p className="text-2xs text-zinc-400">
-                      Modul-modul ini disajikan khusus untuk membantu Anda di
-                      level{" "}
-                      <strong className="text-violet-400 uppercase">
-                        {student.literacy_level}
-                      </strong>
-                      .
-                    </p>
-                  </div>
-
-                  {modules.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {modules.map((m) => {
-                        const isDone = completedModuleIds.includes(m.id);
-                        return (
-                          <div
-                            key={m.id}
-                            className={`rounded-2xl border p-6 flex flex-col justify-between gap-4 transition duration-200 ${
-                              isDone
-                                ? "border-emerald-500/20 bg-emerald-950/[0.02] shadow-[inset_0_0_20px_rgba(16,185,129,0.02)]"
-                                : "border-white/10 bg-white/[0.02] hover:border-violet-500/30"
-                            }`}
+                    {/* Right Column (md:col-span-4): Status Mood Minggu Ini (Top) & Badge (Bottom) */}
+                    <div className="md:col-span-4 space-y-6 flex flex-col justify-between">
+                      {/* Card 3: Status Mood Minggu Ini (Diagram Batang / Bar Chart) */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-base font-extrabold uppercase tracking-tight text-[#3E53A2]">
+                              Status Mood Minggu Ini
+                            </p>
+                            <p className="text-2xs text-zinc-500 font-medium">
+                              Diagram refleksi emosional harian (Senin - Minggu)
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("jurnal")}
+                            className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 px-3 py-2 text-2xs font-extrabold text-[#3E53A2] transition hover:bg-[#5A77DF]/20 cursor-pointer self-start sm:self-center shrink-0"
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-3xs font-extrabold tracking-wider text-violet-400 uppercase bg-violet-400/5 px-2 py-0.5 rounded-full border border-violet-500/10">
-                                  {m.category.name}
-                                </span>
-                                {isDone && (
-                                  <span className="text-3xs font-extrabold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-0.5 rounded-full uppercase">
-                                    ✓ Selesai
-                                  </span>
-                                )}
-                              </div>
-                              <h3 className="text-sm font-bold text-zinc-100">
-                                {m.title}
-                              </h3>
-                              <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed">
-                                {m.content}
-                              </p>
-                            </div>
+                            {todayJournal ? "Lihat Jurnal" : "+ Isi Jurnal Hari Ini"}
+                          </button>
+                        </div>
 
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  router.push(`/student/module/${m.id}`)
-                                }
-                                className="w-full rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.06] py-2.5 text-2xs font-bold text-zinc-300 transition text-center"
-                              >
-                                Pelajari Modul
-                              </button>
+                        {/* Weekly Bar Chart Container */}
+                        <div className="pt-1">
+                          <div className="bg-[#5A77DF]/5 border border-[#5A77DF]/20 rounded-2xl p-4 sm:p-5">
+                            <div className="grid grid-cols-7 gap-2 sm:gap-3">
+                              {weeklyMoodBars.map((bar, idx) => {
+                                const heightPercent = bar.moodScore > 0 ? Math.max(18, Math.round((bar.moodScore / 5) * 100)) : 0;
+                                
+                                return (
+                                  <div
+                                    key={idx}
+                                    onClick={() => {
+                                      if (bar.journal) {
+                                        setSelectedDetailJournal(bar.journal);
+                                        setShowDetailModal(true);
+                                      } else if (!bar.isFuture) {
+                                        setSelectedFillDate(bar.dateStr);
+                                        setMoodScore(3);
+                                        setJournalNotes("");
+                                        setJournalActivities("");
+                                        setJournalMessage(null);
+                                        setShowFillModal(true);
+                                      }
+                                    }}
+                                    className={`flex flex-col items-center justify-end gap-2 cursor-pointer group relative ${
+                                      bar.isFuture && !bar.journal ? "opacity-40 cursor-not-allowed" : ""
+                                    }`}
+                                    title={
+                                      bar.journal
+                                        ? `${bar.dayLabel}: ${bar.moodEmoji?.label} (Skor ${bar.moodScore}/5)`
+                                        : bar.isFuture
+                                        ? `${bar.dayLabel}: Belum Tiba`
+                                        : `${bar.dayLabel}: Klik untuk isi jurnal`
+                                    }
+                                  >
+                                    {/* Vector SVG Mood Emoji Floating Above Bar */}
+                                    <div className="h-9 w-9 flex items-center justify-center transition-all duration-200 group-hover:scale-125 shrink-0">
+                                      {bar.journal && bar.moodEmoji ? (
+                                        bar.moodEmoji.icon
+                                      ) : (
+                                        <div className="h-1.5 w-1.5 rounded-full bg-[#5A77DF]/30" />
+                                      )}
+                                    </div>
+
+                                    {/* Vertical Bar Slot Track */}
+                                    <div className="w-full max-w-[32px] sm:max-w-[38px] bg-white border border-[#5A77DF]/20 rounded-2xl overflow-hidden h-28 sm:h-32 flex items-end p-1 shadow-2xs">
+                                      {bar.moodScore > 0 ? (
+                                        <div
+                                          className={`w-full rounded-xl transition-all duration-500 ${
+                                            bar.moodScore >= 4
+                                              ? "bg-gradient-to-t from-[#5A77DF] via-[#4A64CA] to-[#3E53A2] shadow-sm shadow-[#5A77DF]/30"
+                                              : bar.moodScore === 3
+                                              ? "bg-gradient-to-t from-[#7B93EC] to-[#5A77DF] shadow-2xs"
+                                              : "bg-gradient-to-t from-[#9BB0F5] to-[#7B93EC] opacity-90"
+                                          }`}
+                                          style={{ height: `${heightPercent}%` }}
+                                        />
+                                      ) : (
+                                        <div className="w-full h-1.5 bg-[#5A77DF]/20 rounded-full" />
+                                      )}
+                                    </div>
+
+                                    {/* Day Label at Bottom */}
+                                    <div className="mt-1 flex items-center justify-center">
+                                      <span
+                                        className={`text-[10px] font-extrabold uppercase font-mono transition-all ${
+                                          bar.isToday
+                                            ? "bg-[#5A77DF] text-white px-2 py-0.5 rounded-full shadow-2xs"
+                                            : bar.journal
+                                            ? "text-[#3E53A2] font-black"
+                                            : "text-zinc-500"
+                                        }`}
+                                      >
+                                        {bar.dayLabel}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        );
-                      })}
+                        </div>
+                      </div>
+
+                      {/* Card 4: Badge Baru Didapatkan */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-4 flex-1 flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Gamifikasi</span>
+                            <span className="text-3xs text-zinc-500 font-mono font-bold">{badges.unlocked.length} / {badges.all.length} Badge</span>
+                          </div>
+                          <h3 className="text-base font-bold text-zinc-900">Badge & Lencana Baru Didapatkan</h3>
+
+                          {badges.unlocked.length === 0 ? (
+                            <div className="p-3.5 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-2xs text-[#3E53A2] italic">
+                              Belum ada badge yang terbuka. Selesaikan modul & pretest untuk meraih badge pertamamu!
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {badges.unlocked.slice(0, 3).map((b: any) => (
+                                <div key={b.id} className="flex items-center gap-2.5 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/10 px-3.5 py-2 text-2xs">
+                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#5A77DF]/30 bg-white text-base overflow-hidden shadow-2xs">
+                                    {b.image_url?.startsWith("/") || b.image_url?.startsWith("http") ? (
+                                      <img src={b.image_url} alt={b.name} className="h-full w-full object-cover p-0.5" />
+                                    ) : (
+                                      <span>{b.image_url || "🏆"}</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-[#3E53A2]">{b.name}</p>
+                                    <p className="text-[9px] text-zinc-600 truncate max-w-[140px]">{b.description}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("badge")}
+                          className="w-full rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 py-3 text-xs font-bold text-[#3E53A2] transition text-center cursor-pointer"
+                        >
+                          Lihat Semua Koleksi Lencana ({badges.unlocked.length})
+                        </button>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-center py-12 rounded-2xl border border-white/5 bg-white/[0.01]">
-                      <p className="text-xs text-zinc-500 italic">
-                        Belum ada modul yang disiapkan untuk tingkat{" "}
-                        {student.literacy_level}.
-                      </p>
+                  </div>
+
+                  {/* Row 3: Card Rekomendasi Modul yang Dikerjakan */}
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-bold text-zinc-900">Rekomendasi Modul Pembelajaran</h3>
+                        <p className="text-2xs text-zinc-500 mt-0.5">Modul yang disarankan untuk dikerjakan selanjutnya</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("modul")}
+                        className="text-2xs font-extrabold text-[#5A77DF] hover:text-[#3E53A2] transition cursor-pointer flex items-center gap-1"
+                      >
+                        <span>Lihat Semua Modul</span>
+                        <ArrowRight className="w-3 h-3" />
+                      </button>
                     </div>
-                  )}
+
+                    {recommendedModules.length === 0 ? (
+                      <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-center text-xs text-[#3E53A2] font-medium flex items-center justify-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#5A77DF] shrink-0" />
+                        <span>Selamat! Semua modul pembelajaran pada level Anda telah selesai dikerjakan.</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {recommendedModules.map((mod: any) => {
+                          const prog = mod.progress || 0;
+                          return (
+                            <div key={mod.id} className="rounded-xl border border-[#5A77DF]/20 bg-white p-4 flex flex-col justify-between gap-3 hover:border-[#5A77DF] transition shadow-xs">
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] uppercase tracking-wider text-[#5A77DF] font-extrabold font-mono">{mod.subjectName}</span>
+                                <h4 className="text-xs font-bold text-zinc-900 line-clamp-1">{mod.title}</h4>
+                                <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{mod.content}</p>
+                              </div>
+
+                              <div className="space-y-2 pt-2 border-t border-zinc-200">
+                                <div className="flex justify-between text-[9px] text-zinc-500 font-mono font-bold">
+                                  <span>Progress</span>
+                                  <span>{prog}%</span>
+                                </div>
+                                <div className="h-1.5 w-full rounded-full bg-zinc-200 overflow-hidden">
+                                  <div className="h-full bg-[#5A77DF] rounded-full transition-all duration-500" style={{ width: `${prog}%` }} />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => router.push(`/student/module/${mod.id}`)}
+                                  className="w-full rounded-lg bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-3xs font-extrabold py-2 transition text-center cursor-pointer mt-1 shadow-2xs"
+                                >
+                                  {prog > 0 ? "Lanjutkan Belajar" : "Pelajari Modul"}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {activeTab === "pelajaran" && (
+              {/* TAB: SCREENING BULANAN */}
+              {/* TAB 2: SKRINING BULANAN */}
+              {activeTab === "screening" && (
                 <div className="space-y-6 animate-fadeIn">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Modul Mata Pelajaran Sekolah
+                  {/* Top Header Card */}
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-6">
+                    <div className="flex flex-col gap-2 border-b border-zinc-100 pb-4">
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">
+                        Screening Kesehatan Mental Bulanan (SRQ-29)
+                      </h2>
+                      <p className="text-xs text-zinc-600 leading-relaxed max-w-3xl">
+                        Screening mandiri menggunakan instrumen baku WHO Self-Reporting Questionnaire (SRQ-29) dilakukan setiap bulan untuk memantau perkembangan dan kesehatan emosional Anda.
+                      </p>
+                    </div>
+
+                    {/* Status Screening Bulan Ini Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-xs uppercase tracking-wider text-[#5A77DF] font-extrabold font-mono">
+                            Periode: {indonesianMonths[new Date().getMonth()]} {new Date().getFullYear()}
+                          </span>
+                          {data.monthlyScreening?.isCompletedThisMonth ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-3xs font-extrabold bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30 uppercase">
+                              <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Sudah Diisi Bulan Ini
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-3xs font-extrabold bg-amber-500/10 text-amber-600 border border-amber-500/30 uppercase animate-pulse">
+                              <AlertTriangle className="w-3 h-3 text-amber-500" /> Belum Diisi Bulan Ini
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-base font-bold text-zinc-800">
+                          Evaluasi Kesehatan Mental Periodik
+                        </h3>
+                        <p className="text-xs text-zinc-600 max-w-2xl leading-relaxed">
+                          {data.monthlyScreening?.isCompletedThisMonth
+                            ? `Screening bulan ${indonesianMonths[new Date().getMonth()]} ${new Date().getFullYear()} telah Anda selesaikan. Anda dapat memperbarui screening kapan saja jika mengalami perubahan kondisi emosional.`
+                            : `Anda belum menyelesaikan screening untuk bulan ${indonesianMonths[new Date().getMonth()]} ${new Date().getFullYear()}. Silakan isi 29 pertanyaan SRQ-29 untuk mengevaluasi status kesehatan mental Anda.`}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenMonthlySrqModal}
+                        className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-3 text-xs font-extrabold text-white shadow-md transition duration-200 shrink-0 cursor-pointer"
+                      >
+                        {data.monthlyScreening?.isCompletedThisMonth ? (
+                          <span className="inline-flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Ulangi / Update Screening Bulan Ini</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5"><Play className="w-3.5 h-3.5 fill-current" /> Mulai Screening Bulanan (SRQ-29)</span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Ringkasan Status Mental Saat Ini */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="p-5 rounded-2xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 space-y-2 text-left">
+                        <span className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold">
+                          Status Mental Terkini
+                        </span>
+                        <div className="text-base font-black text-[#3E53A2]">
+                          {student.mental_level}
+                        </div>
+                        <p className="text-2xs text-zinc-600">
+                          Status ini digunakan untuk menyesuaikan rekomendasi modul & pendampingan.
+                        </p>
+                      </div>
+
+                      <div className="p-5 rounded-2xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 space-y-2 text-left">
+                        <span className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold">
+                          Indikator Pendampingan
+                        </span>
+                        <div>
+                          {student.risk_flag ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-3xs font-extrabold bg-rose-500/10 text-rose-600 border border-rose-500/20 uppercase">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" /> Memerlukan Perhatian / Konsultasi BK
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-3xs font-extrabold bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30 uppercase">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#5A77DF] shrink-0" /> Stabil & Tanpa Alert Risiko
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-2xs text-zinc-600">
+                          Jika terindikasi risiko mental, Guru Konseling (BK) akan memberikan pendampingan personal.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Riwayat Screening Bulanan */}
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                      <h3 className="text-base font-bold text-zinc-900">
+                        Riwayat Screening Bulanan
+                      </h3>
+                      <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                        Tersimpan di Database
+                      </span>
+                    </div>
+
+                    {!data.monthlyScreening?.history || data.monthlyScreening.history.length === 0 ? (
+                      <p className="text-xs text-zinc-500 italic py-6 text-center">
+                        Belum ada data riwayat screening bulanan yang tersimpan.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-zinc-200 text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-black">
+                              <th className="py-3 px-4">Periode</th>
+                              <th className="py-3 px-4">Tanggal Pengisian</th>
+                              <th className="py-3 px-4">Hasil Status Mental</th>
+                              <th className="py-3 px-4">Rekomendasi / Catatan</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 text-zinc-800 font-medium">
+                            {data.monthlyScreening.history.map((record) => (
+                              <tr key={record.id} className="hover:bg-zinc-50 transition">
+                                <td className="py-3.5 px-4 font-mono font-extrabold text-[#3E53A2]">
+                                  {record.period}
+                                </td>
+                                <td className="py-3.5 px-4 text-zinc-700 font-semibold">
+                                  {new Date(record.created_at).toLocaleDateString("id-ID", {
+                                    day: "numeric",
+                                    month: "long",
+                                    year: "numeric"
+                                  })}
+                                </td>
+                                <td className="py-3.5 px-4 font-extrabold text-zinc-900">
+                                  {record.mental_level}
+                                </td>
+                                <td className="py-3.5 px-4 text-zinc-600 text-2xs max-w-xs leading-relaxed">
+                                  {record.recommendations || "-"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: MODUL (CONSOLIDATED) */}
+              {activeTab === "modul" && (
+                <div className="space-y-6 animate-fadeIn">
+                  {/* Top Header Card */}
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-2">
+                    <h2 className="text-xl font-black text-zinc-900 tracking-tight">
+                      Modul Pembelajaran Sekolah
                     </h2>
-                    <p className="text-2xs text-zinc-400">
-                      Modul dan kuis khusus untuk mata pelajaran yang ada di kelas Anda.
+                    <p className="text-xs text-zinc-600 leading-relaxed max-w-3xl">
+                      Pilih Mata Pelajaran di bawah ini. Ikuti Pretest Mapel terlebih dahulu untuk menentukan level penempatan belajar Anda pada masing-masing mata pelajaran.
                     </p>
                   </div>
 
-                  {!data?.subjects || data.subjects.length === 0 ? (
-                    <div className="text-center py-12 rounded-2xl border border-white/5 bg-white/[0.01]">
-                      <p className="text-xs text-zinc-500 italic">
-                        Belum ada mata pelajaran yang terdaftar untuk kelas Anda.
-                      </p>
+                  {subjects.length === 0 ? (
+                    <div className="text-center py-12 rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
+                      <p className="text-xs text-zinc-500 italic">Belum ada mata pelajaran terdaftar.</p>
                     </div>
                   ) : (
                     <div className="grid gap-6">
-                      {data.subjects.map((sub: any) => (
-                        <div key={sub.id} className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl">
-                          <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                      {subjects.map((sub) => (
+                        <div key={sub.id} className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-5">
+                          {/* Subject Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                             <div>
-                              <h3 className="text-lg font-bold text-zinc-100">{sub.name}</h3>
-                              <p className="text-xs text-zinc-500">Guru Pengampu: {sub.teacher?.name || "Belum ditentukan"}</p>
+                              <div className="flex items-center gap-3">
+                                <h3 className="text-lg font-black text-zinc-900">{sub.name}</h3>
+                                <span className="text-3xs px-3 py-1 rounded-full font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30">
+                                  Level: {sub.level}
+                                </span>
+                              </div>
+                              <p className="text-xs text-zinc-600 mt-1 font-medium">
+                                Guru Pengampu: <strong className="text-zinc-800">{sub.teacher?.name || "Belum ditentukan"}</strong>
+                              </p>
                             </div>
-                            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-3xs font-semibold text-emerald-300 uppercase">
-                              {sub.modules.length} Modul
-                            </span>
+
+                            {/* Pretest CTA or Status */}
+                            {!sub.hasPretest ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSubjectPretest(sub)}
+                                className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition duration-200 shrink-0 cursor-pointer flex items-center gap-1.5"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <span>Ikuti Pretest Mapel (10-15 Soal)</span>
+                              </button>
+                            ) : (
+                              <span className="rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-3.5 py-1.5 text-3xs font-extrabold text-[#3E53A2] uppercase shrink-0 inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Pretest Mapel Selesai ({sub.modules.length} Modul)
+                              </span>
+                            )}
                           </div>
 
-                          <div className="space-y-3">
-                            {sub.modules.length === 0 ? (
-                              <p className="text-xs text-zinc-500 italic">Belum ada modul pelajaran.</p>
-                            ) : (
-                              sub.modules.map((mod: any) => {
+                          {/* Subject Modules List */}
+                          {!sub.hasPretest ? (
+                            <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-center text-xs text-[#3E53A2] font-semibold space-y-1">
+                              <p className="flex items-center justify-center gap-1.5">
+                                <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+                                <span>Selesaikan <strong className="text-[#5A77DF]">Pretest Penempatan Level</strong> untuk membuka materi modul mata pelajaran <strong className="text-zinc-900">{sub.name}</strong>.</span>
+                              </p>
+                            </div>
+                          ) : sub.modules.length === 0 ? (
+                            <p className="text-xs text-zinc-500 italic py-2">Belum ada modul yang disiapkan untuk level {sub.level}.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                              {sub.modules.map((mod) => {
                                 const isDone = completedModuleIds.includes(mod.id);
+                                const modProgress = getModuleProgress(mod.id);
+
                                 return (
-                                  <div key={mod.id} className="rounded-xl border border-white/5 bg-black/20 p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:border-white/10 transition">
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        <h4 className="font-semibold text-sm text-zinc-200">{mod.title}</h4>
-                                        {isDone && (
-                                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-300">
-                                            ✓ Selesai
+                                  <div
+                                    key={mod.id}
+                                    className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 flex flex-col justify-between gap-4 hover:border-[#5A77DF] transition shadow-xs"
+                                  >
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <h4 className="font-extrabold text-xs text-zinc-900 truncate">{mod.title}</h4>
+                                        {isDone ? (
+                                          <span className="text-[9px] font-extrabold text-[#3E53A2] bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                            <CheckCircle2 className="w-2.5 h-2.5 text-[#5A77DF]" /> Selesai
+                                          </span>
+                                        ) : modProgress > 0 ? (
+                                          <span className="text-[9px] font-extrabold text-amber-600 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                            <Zap className="w-2.5 h-2.5 text-amber-500" /> {modProgress}%
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] font-extrabold text-zinc-500 bg-zinc-100 px-2.5 py-0.5 rounded-full uppercase">
+                                            0%
                                           </span>
                                         )}
                                       </div>
-                                      <p className="text-xs text-zinc-500 mt-1 max-w-[500px] truncate">{mod.content}</p>
+                                      <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{mod.content}</p>
                                     </div>
+
+                                    {/* Progress Bar */}
+                                    <div className="space-y-1">
+                                      <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-500 ${
+                                            isDone ? "bg-[#5A77DF]" : modProgress > 0 ? "bg-amber-400" : "bg-[#5A77DF] opacity-30"
+                                          }`}
+                                          style={{ width: `${modProgress}%` }}
+                                        />
+                                      </div>
+                                    </div>
+
                                     <button
+                                      type="button"
                                       onClick={() => router.push(`/student/module/${mod.id}`)}
-                                      className="rounded-lg bg-white/5 hover:bg-white/10 px-4 py-2 text-2xs font-bold text-zinc-300 transition"
+                                      className="w-full rounded-xl py-2.5 text-xs font-extrabold transition text-center cursor-pointer bg-[#5A77DF] hover:bg-[#3E53A2] text-white shadow-xs"
                                     >
-                                      Buka Modul
+                                      {isDone ? "Tinjau Modul" : modProgress > 0 ? "Lanjutkan Belajar" : "Pelajari Modul"}
                                     </button>
                                   </div>
                                 );
-                              })
-                            )}
-                          </div>
+                              })}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -985,376 +1691,176 @@ export default function StudentDashboard() {
                 </div>
               )}
 
-              {/* ========================================================
-            TAB 3: JURNAL (REFLEKSI HARIAN)
-            ======================================================== */}
+              {/* TAB 3: JURNAL */}
               {activeTab === "jurnal" && (
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fadeIn">
                   <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Jurnal Refleksi Harian
-                    </h2>
-                    <p className="text-2xs text-zinc-400">
-                      Tuliskan kondisi emosi dan durasi screen time Anda untuk
-                      membantu AI DigiMind <br /> menganalisis kondisi kesehatan
-                      mental Anda.
-                    </p>
+                    <h2 className="text-xl font-extrabold tracking-tight">Jurnal Refleksi Harian</h2>
+                    <p className="text-2xs text-zinc-400">Pilih tanggal pada kalender di bawah ini untuk mengisi jurnal refleksi harian atau melihat riwayat jurnal.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                    {/* Journal Form */}
-                    <div className="md:col-span-3 rounded-2xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-xl">
-                      <form
-                        onSubmit={handleSubmitJournal}
-                        className="space-y-5"
-                      >
-                        {journalMessage && (
-                          <div
-                            className={`p-4 rounded-xl text-xs font-semibold ${
-                              journalMessage.includes("berhasil")
-                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                : "bg-red-500/10 text-red-400 border border-red-500/20"
-                            }`}
-                          >
-                            {journalMessage}
-                          </div>
-                        )}
-
-                        {latestFeedback && (
-                          <div className="rounded-2xl border border-violet-500/20 bg-violet-600/5 p-5 shadow-lg backdrop-blur-xl relative animate-fadeIn space-y-3 text-left">
-                            <button
-                              type="button"
-                              onClick={() => setLatestFeedback(null)}
-                              className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-300 text-xs cursor-pointer"
-                            >
-                              ✕
-                            </button>
-                            <div className="flex items-center gap-2">
-                              <span className="text-base">🤖</span>
-                              <h4 className="text-xs font-bold text-violet-400 uppercase tracking-wider">
-                                Analisis AI DigiMind
-                              </h4>
-                            </div>
-                            <p className="text-2xs text-zinc-300 leading-relaxed text-justify">
-                              {latestFeedback}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Mood Selector */}
-                        {/* <div className="space-y-2">
-                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            Tanggal Jurnal
-                          </label>
-
-                          <input
-                            type="date"
-                            value={journalDate}
-                            onChange={(e) => setJournalDate(e.target.value)}
-                            className="w-full rounded-xl border border-white/5 bg-white/[0.01] px-4 py-3 text-xs text-zinc-300 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
-                          />
-                        </div> */}
-
-                        <div className="space-y-3">
-                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            Bagaimana perasaanmu hari ini?
-                          </label>
-                          <div className="flex items-center justify-between gap-2 py-2">
-                            {MOOD_EMOJIS.map((emoji) => (
-                              <button
-                                key={emoji.score}
-                                type="button"
-                                onClick={() => setMoodScore(emoji.score)}
-                                className={`flex-1 rounded-xl border py-3 px-1.5 sm:px-2 flex flex-col items-center justify-center gap-1.5 transition cursor-pointer ${
-                                  moodScore === emoji.score
-                                    ? "border-violet-500 bg-violet-600/15 text-white font-bold"
-                                    : "border-white/5 bg-white/[0.01] text-zinc-500 hover:border-white/10 hover:bg-white/[0.03]"
-                                }`}
-                              >
-                                <span className="text-2xl">{emoji.char}</span>
-                                <span className="text-[9px] sm:text-3xs uppercase tracking-normal whitespace-nowrap">
-                                  {emoji.label}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Screen Time / Activities */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            Screen Time Hari Ini
-                          </label>
-
-                          <select
-                            value={journalActivities}
-                            onChange={(e) =>
-                              setJournalActivities(e.target.value)
-                            }
-                            className="
-    w-full
-    rounded-xl
-    border border-white/10
-    bg-[#14101d]
-    px-4 py-3
-    text-xs text-white
-    cursor-pointer
-    outline-none
-    focus:border-violet-500
-    focus:ring-2
-    focus:ring-violet-500/40
-  "
-                          >
-                            <option
-                              value=""
-                              className="bg-[#14101d] text-zinc-400"
-                            >
-                              Pilih durasi screen time
-                            </option>
-
-                            <option
-                              value="< 1 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              Kurang dari 1 jam
-                            </option>
-
-                            <option
-                              value="1-2 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              1 - 2 jam
-                            </option>
-
-                            <option
-                              value="2-4 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              2 - 4 jam
-                            </option>
-
-                            <option
-                              value="4-6 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              4 - 6 jam
-                            </option>
-
-                            <option
-                              value="6-8 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              6 - 8 jam
-                            </option>
-
-                            <option
-                              value="> 8 jam"
-                              className="bg-[#14101d] text-white"
-                            >
-                              Lebih dari 8 jam
-                            </option>
-                          </select>
-                        </div>
-
-                        {/* Reflective Notes */}
-                        <div className="space-y-2">
-                          <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                            Catatan Refleksi Emosi
-                          </label>
-                          <textarea
-                            rows={3}
-                            placeholder="Bagaimana perasaanmu setelah scrolling hari ini? Apakah cemas, terhibur, stres, atau tenang? Tuliskan refleksimu di sini..."
-                            value={journalNotes}
-                            onChange={(e) => setJournalNotes(e.target.value)}
-                            className="w-full rounded-xl border border-white/5 bg-white/[0.01] px-4 py-3 text-xs text-zinc-300 placeholder-zinc-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none resize-none"
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={submittingJournal}
-                          className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3 text-xs font-bold text-white shadow-lg transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-                        >
-                          {submittingJournal
-                            ? "Menyimpan Jurnal..."
-                            : "Simpan Catatan Jurnal"}
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Journal History Sidebar */}
-                    <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-xl space-y-4 max-h-[480px] overflow-y-auto scrollbar-hide">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 pb-2 border-b border-white/5">
-                        Riwayat Jurnal Refleksi
+                  <div className="rounded-2xl border border-zinc-200/60 bg-white p-6 shadow-md">
+                    <div className="flex items-center justify-between pb-4 border-b border-zinc-100 mb-6">
+                      <h3 className="text-base font-bold text-zinc-800">
+                        {indonesianMonths[currentMonth]} {currentYear}
                       </h3>
-
-                      {journals && journals.length > 0 ? (
-                        <div className="space-y-3">
-                          {journals.map((j) => {
-                            const moodObj = MOOD_EMOJIS.find(
-                              (m) => m.score === j.mood_score,
-                            );
-
-                            const formattedDate = new Date(
-                              j.logged_at,
-                            ).toLocaleDateString("id-ID", {
-                              day: "numeric",
-                              month: "short",
-                            });
-
-                            return (
-                              <div
-                                key={j.id}
-                                className="p-3 rounded-xl border border-white/5 bg-white/[0.01] space-y-1.5 text-left"
-                              >
-                                {/* HEADER */}
-                                <div className="flex items-center justify-between">
-                                  <span className="text-[14px]">
-                                    {moodObj?.char} {moodObj?.label}
-                                  </span>
-
-                                  <span className="text-xs text-zinc-500">
-                                    {formattedDate}
-                                  </span>
-                                </div>
-
-                                {/* SCREEN TIME */}
-                                {j.activities && (
-                                  <p className="text-xs text-zinc-400 italic">
-                                    <strong>Screen Time :</strong>{" "}
-                                    {j.activities}
-                                  </p>
-                                )}
-
-                                {/* NOTES */}
-                                {j.notes && (
-                                  <p className="text-2xs text-zinc-400 leading-normal line-clamp-2">
-                                    {j.notes}
-                                  </p>
-                                )}
-
-                                {/* AI BUTTON */}
-                                {j.ai_feedback && (
-                                  <div className="pt-2 border-t border-white/5">
-                                    <button
-                                      onClick={() => setSelectedAI(j)}
-                                      className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-400 hover:text-violet-300 transition"
-                                    >
-                                      💡 <span>Lihat Analisis AI</span>
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-center py-12 text-3xs text-zinc-600 italic">
-                          Belum ada jurnal yang disimpan sebelumnya.
-                        </div>
-                      )}
-                    </div>
-                    {selectedAI && (
-                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                        <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0f0b1a] p-5 shadow-2xl relative animate-fadeIn">
-                          {/* CLOSE */}
-                          <button
-                            onClick={() => setSelectedAI(null)}
-                            className="absolute right-4 top-4 text-zinc-400 hover:text-white"
-                          >
-                            ✕
-                          </button>
-
-                          {/* HEADER */}
-                          <div className="flex items-center gap-2 mb-4">
-                            <span className="text-lg">🤖</span>
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-violet-400">
-                              Analisis AI DigiMind
-                            </h3>
-                          </div>
-
-                          {/* CONTENT */}
-                          <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
-                            {selectedAI.ai_feedback}
-                          </p>
-
-                          {/* FOOTER */}
-                          <div className="mt-4 pt-3 border-t border-white/10 text-xs text-zinc-500 flex justify-between">
-                            <span>{selectedAI.activities}</span>
-                            <span>
-                              {new Date(
-                                selectedAI.logged_at,
-                              ).toLocaleDateString("id-ID")}
-                            </span>
-                          </div>
-                        </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (currentMonth === 0) {
+                              setCurrentMonth(11);
+                              setCurrentYear(currentYear - 1);
+                            } else {
+                              setCurrentMonth(currentMonth - 1);
+                            }
+                          }}
+                          className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition cursor-pointer"
+                        >
+                          ◀ Sebelumnya
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (currentMonth === 11) {
+                              setCurrentMonth(0);
+                              setCurrentYear(currentYear + 1);
+                            } else {
+                              setCurrentMonth(currentMonth + 1);
+                            }
+                          }}
+                          className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition cursor-pointer"
+                        >
+                          Berikutnya ▶
+                        </button>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-zinc-400 mb-2">
+                      <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
+                    </div>
+
+                    <div className="grid grid-cols-7 gap-2">
+                      {(() => {
+                        const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
+                        const totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+                        const daysList = [];
+
+                        for (let i = 0; i < firstDayIndex; i++) {
+                          daysList.push(<div key={`empty-${i}`} className="h-11 sm:h-14 bg-zinc-50/50 rounded-xl border border-zinc-100/60" />);
+                        }
+
+                        for (let day = 1; day <= totalDays; day++) {
+                          const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                          const cellDateReset = new Date(currentYear, currentMonth, day).setHours(0,0,0,0);
+                          const todayReset = new Date().setHours(0,0,0,0);
+                          const isFuture = cellDateReset > todayReset;
+
+                          const journal = (journals || []).find((j: any) => {
+                            const jd = new Date(j.logged_at);
+                            return jd.getFullYear() === currentYear && jd.getMonth() === currentMonth && jd.getDate() === day;
+                          });
+
+                          const moodEmoji = journal ? MOOD_EMOJIS.find(m => m.score === journal.mood_score) : null;
+                          
+                          daysList.push(
+                            <button
+                              key={`day-${day}`}
+                              type="button"
+                              disabled={isFuture && !journal}
+                              onClick={() => {
+                                if (journal) {
+                                  setSelectedDetailJournal(journal);
+                                  setShowDetailModal(true);
+                                } else {
+                                  setSelectedFillDate(dateString);
+                                  setMoodScore(3);
+                                  setJournalNotes("");
+                                  setJournalActivities("");
+                                  setJournalMessage(null);
+                                  setShowFillModal(true);
+                                }
+                              }}
+                              className={`h-11 sm:h-14 p-1.5 sm:p-2 border rounded-xl flex flex-col justify-between items-center transition-all cursor-pointer text-center relative group ${
+                                journal
+                                  ? "bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 border-[#5A77DF]/40 shadow-2xs"
+                                  : isFuture
+                                    ? "bg-zinc-50 opacity-40 cursor-not-allowed border-zinc-200/40"
+                                    : "bg-white hover:bg-zinc-50 hover:border-[#5A77DF]/40 border-zinc-200"
+                              }`}
+                            >
+                              <span className={`text-2xs sm:text-xs font-black ${journal ? "text-[#3E53A2]" : isFuture ? "text-zinc-400" : "text-zinc-700"}`}>
+                                {day}
+                              </span>
+                              
+                              {journal && moodEmoji && (
+                                <div className="transform group-hover:scale-110 transition duration-200 mb-0.5" title={moodEmoji.label}>
+                                  {moodEmoji.icon}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        }
+                        return daysList;
+                      })()}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* ========================================================
-            TAB 4: BADGE (GRID KOLEKSI LENCANA)
-            ======================================================== */}
+              {/* TAB 4: BADGE */}
               {activeTab === "badge" && (
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Koleksi Lencana Gamifikasi
-                    </h2>
-                    <p className="text-2xs text-zinc-400">
-                      Selesaikan modul-modul belajar dan buat jurnal refleksi
-                      untuk membuka lencana baru!
+                <div className="space-y-6 animate-fadeIn">
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Award className="h-6 w-6 text-[#5A77DF]" />
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Koleksi Lencana Gamifikasi</h2>
+                    </div>
+                    <p className="text-xs text-zinc-600 leading-relaxed">
+                      Selesaikan modul pembelajaran & pretest untuk meraih lencana penghargaan baru!
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     {badges.all.map((badge) => {
-                      const isUnlocked = badges.unlocked.some(
-                        (ub) => ub.name === badge.name,
-                      );
+                      const isUnlocked = badges.unlocked.some((ub) => ub.name === badge.name);
 
                       return (
                         <div
                           key={badge.id}
                           className={`rounded-2xl border p-5 flex flex-col items-center text-center gap-3 transition ${
                             isUnlocked
-                              ? "border-violet-500/20 bg-violet-950/[0.02] shadow-[0_0_20px_rgba(139,92,246,0.05)]"
-                              : "border-white/5 bg-white/[0.01] opacity-40 grayscale"
+                              ? "border-[#5A77DF]/30 bg-white shadow-sm"
+                              : "border-zinc-200 bg-zinc-50/50 opacity-50 grayscale"
                           }`}
                         >
-                          <div
-                            className={`h-14 w-14 rounded-full flex items-center justify-center text-2xl border ${
-                              isUnlocked
-                                ? "bg-violet-600/10 border-violet-500/30 text-white shadow-[0_0_15px_rgba(139,92,246,0.15)]"
-                                : "bg-white/5 border-white/10"
-                            }`}
-                          >
-                            {badge.name === "Fact-Checker"
-                              ? "🔍"
-                              : badge.name === "Screen Guard"
-                                ? "🛡️"
-                                : badge.name === "Cyber Pioneer"
-                                  ? "🚀"
-                                  : "🎓"}
+                          <div className={`h-14 w-14 rounded-2xl flex items-center justify-center border shadow-xs overflow-hidden ${
+                            isUnlocked
+                              ? "bg-[#5A77DF]/10 border-[#5A77DF]/30 text-[#5A77DF]"
+                              : "bg-zinc-100 border-zinc-200 text-zinc-400"
+                          }`}>
+                            {badge.image_url?.startsWith("/") || badge.image_url?.startsWith("http") ? (
+                              <img src={badge.image_url} alt={badge.name} className="h-full w-full object-cover p-1" />
+                            ) : badge.image_url ? (
+                              <span className="text-2xl">{badge.image_url}</span>
+                            ) : (
+                              <Award className="h-7 w-7" />
+                            )}
                           </div>
                           <div>
-                            <h3 className="text-xs font-bold text-zinc-200">
-                              {badge.name}
-                            </h3>
-                            <p className="text-3xs text-zinc-500 mt-1 leading-relaxed px-2">
-                              {badge.description}
-                            </p>
+                            <h3 className="text-xs font-black text-zinc-900">{badge.name}</h3>
+                            <p className="text-3xs text-zinc-600 mt-1 leading-relaxed px-1 font-medium">{badge.description}</p>
                           </div>
-                          <span
-                            className={`text-3xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
-                              isUnlocked
-                                ? "bg-violet-500/10 text-violet-400 border-violet-500/25"
-                                : "bg-white/5 text-zinc-600 border-white/5"
-                            }`}
-                          >
-                            {isUnlocked ? "Terbuka" : "Terkunci"}
+                          <span className={`text-3xs px-3 py-1 rounded-full font-extrabold uppercase border ${
+                            isUnlocked
+                              ? "bg-[#5A77DF]/10 text-[#3E53A2] border-[#5A77DF]/30"
+                              : "bg-zinc-100 text-zinc-500 border-zinc-200"
+                          }`}>
+                            {isUnlocked ? (
+                              <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Terbuka</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1"><Lock className="w-3 h-3 text-zinc-400" /> Terkunci</span>
+                            )}
                           </span>
                         </div>
                       );
@@ -1363,20 +1869,19 @@ export default function StudentDashboard() {
                 </div>
               )}
 
-              {/* ========================================================
-            TAB 5: PROFIL (INFORMASI DIRI & LOGOUT)
-            ======================================================== */}
+              {/* TAB 5: PROFIL */}
               {activeTab === "profil" && (
-                <div className="max-w-2xl mx-auto rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6 relative animate-fadeIn">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Profil Pengguna DigiMind
-                    </h2>
+                <div className="w-full rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-6 animate-fadeIn">
+                  <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                    <div className="flex items-center gap-3">
+                      <User className="h-6 w-6 text-[#5A77DF]" />
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Profil Pengguna DigiMind</h2>
+                    </div>
                     {!isEditingProfile && (
                       <button
                         type="button"
                         onClick={handleOpenEditProfile}
-                        className="rounded-xl border border-violet-500/30 bg-violet-600/10 px-4 py-2 text-2xs font-bold text-violet-400 hover:bg-violet-600/20 transition cursor-pointer"
+                        className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 px-4 py-2 text-xs font-extrabold text-[#3E53A2] hover:bg-[#5A77DF]/20 transition cursor-pointer"
                       >
                         Edit Profil
                       </button>
@@ -1384,230 +1889,238 @@ export default function StudentDashboard() {
                   </div>
 
                   {profileMessage && (
-                    <div
-                      className={`p-4 rounded-xl text-xs font-semibold ${
-                        profileMessage.includes("berhasil")
-                          ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                          : "bg-red-500/10 text-red-400 border border-red-500/20"
-                      }`}
-                    >
+                    <div className={`p-4 rounded-xl text-xs font-semibold ${profileMessage.includes("berhasil") ? "bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30" : "bg-rose-500/10 text-rose-600 border border-rose-500/20"}`}>
                       {profileMessage}
                     </div>
                   )}
 
                   {isEditingProfile ? (
-                    /* Edit Profile Mode */
                     <form onSubmit={handleSaveProfile} className="space-y-6">
-                      {/* Avatar Uploader & Presets */}
                       <div className="space-y-3 flex flex-col items-center">
-                        <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 self-start">
-                          Pilih Foto Profil
-                        </label>
-
-                        {/* Current Avatar Preview */}
-                        <div className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-violet-500/30 bg-violet-600/5 flex items-center justify-center text-5xl shadow-lg shadow-violet-500/10 select-none">
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono self-start">Foto Profil</label>
+                        <div className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-[#5A77DF]/30 bg-[#5A77DF]/10 flex items-center justify-center text-5xl select-none shadow-sm">
                           {editAvatar ? (
-                            editAvatar.startsWith("data:") ||
-                            editAvatar.startsWith("http") ? (
-                              <img
-                                src={editAvatar}
-                                alt="Edit Avatar"
-                                className="h-full w-full object-cover"
-                              />
+                            editAvatar.startsWith("data:") || editAvatar.startsWith("http") ? (
+                              <img src={editAvatar} alt="Edit Avatar" className="h-full w-full object-cover" />
                             ) : (
                               editAvatar
                             )
                           ) : (
-                            <span className="text-violet-400 font-bold text-xl">
-                              {editName.charAt(0).toUpperCase()}
-                            </span>
+                            <span className="text-[#5A77DF] font-black text-2xl">{editName.charAt(0).toUpperCase()}</span>
                           )}
                         </div>
-
-                        {/* File Input Uploader */}
                         <div className="flex gap-2 justify-center pt-2">
-                          <label className="rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/5 px-3 py-1.5 text-3xs font-bold text-zinc-300 transition cursor-pointer">
-                            📂 Unggah Foto
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleFileChange}
-                              className="hidden"
-                            />
+                          <label className="rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 px-3.5 py-2 text-3xs font-extrabold text-[#3E53A2] transition cursor-pointer flex items-center gap-1.5">
+                            <Upload className="h-3.5 w-3.5" /> Unggah Foto
+                            <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
                           </label>
                           {editAvatar && (
                             <button
                               type="button"
                               onClick={() => setEditAvatar("")}
-                              className="rounded-lg border border-red-500/20 bg-red-950/10 hover:bg-red-950/20 px-3 py-1.5 text-3xs font-bold text-red-400 transition cursor-pointer"
+                              className="rounded-xl border border-rose-500/20 bg-rose-50 hover:bg-rose-100 px-3.5 py-2 text-3xs font-extrabold text-rose-600 transition cursor-pointer flex items-center gap-1"
                             >
-                              ✕ Hapus
+                              <X className="h-3.5 w-3.5" /> Hapus
                             </button>
                           )}
                         </div>
-
-                        {/* Preset Emojis Picker */}
-                        <div className="w-full pt-3 space-y-2">
-                          <span className="text-4xs font-bold uppercase tracking-wider text-zinc-500">
-                            Atau pilih Avatar Preset:
-                          </span>
-                          <div className="flex flex-wrap gap-2 justify-center">
-                            {[
-                              "🧑‍🚀",
-                              "👾",
-                              "🤖",
-                              "🕵️",
-                              "🦊",
-                              "🦄",
-                              "🐼",
-                              "⭐",
-                            ].map((avatarPreset) => (
-                              <button
-                                key={avatarPreset}
-                                type="button"
-                                onClick={() => setEditAvatar(avatarPreset)}
-                                className={`h-9 w-9 rounded-xl border flex items-center justify-center text-lg transition cursor-pointer ${
-                                  editAvatar === avatarPreset
-                                    ? "border-violet-500 bg-violet-600/20"
-                                    : "border-white/5 bg-white/[0.01] hover:border-white/10 hover:bg-white/5"
-                                }`}
-                              >
-                                {avatarPreset}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                       </div>
 
-                      {/* Edit Name Input */}
                       <div className="space-y-2 text-left">
-                        <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                          Nama Lengkap
-                        </label>
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Nama Lengkap</label>
                         <input
                           type="text"
                           required
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="w-full rounded-xl border border-white/5 bg-white/[0.01] px-4 py-3 text-xs text-zinc-300 placeholder-zinc-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
                         />
                       </div>
 
-                      {/* Edit Username Input */}
                       <div className="space-y-2 text-left">
-                        <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                          Nama Pengguna (Username)
-                        </label>
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Username</label>
                         <input
                           type="text"
                           required
                           value={editUsername}
-                          onChange={(e) =>
-                            setEditUsername(
-                              e.target.value.replace(/\s+/g, "").toLowerCase(),
-                            )
-                          }
-                          className="w-full rounded-xl border border-white/5 bg-white/[0.01] px-4 py-3 text-xs text-zinc-300 placeholder-zinc-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
+                          onChange={(e) => setEditUsername(e.target.value.replace(/\s+/g, "").toLowerCase())}
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
                         />
                       </div>
 
-                      {/* Edit Form Actions */}
+                      <div className="space-y-2 text-left">
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono flex items-center justify-between">
+                          <span>Tingkatan Kelas (Naik Kelas)</span>
+                          <span className="text-3xs text-zinc-400 font-normal lowercase">(Pilih kelas baru jika Anda naik kelas)</span>
+                        </label>
+                        <select
+                          value={editClassId}
+                          onChange={(e) => setEditClassId(e.target.value)}
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-bold cursor-pointer"
+                        >
+                          {data?.allClasses?.map((cls: any) => (
+                            <option key={cls.id} value={cls.id}>
+                              🏫 {cls.name} {cls.major ? `(${cls.major})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
                       <div className="flex gap-3 pt-2">
                         <button
                           type="button"
                           onClick={() => setIsEditingProfile(false)}
-                          className="flex-1 py-3 rounded-xl border border-white/10 bg-white/[0.01] hover:bg-white/5 text-zinc-400 text-xs font-semibold transition cursor-pointer"
+                          className="flex-1 py-3 rounded-xl border border-zinc-200 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold transition cursor-pointer"
                         >
                           Batal
                         </button>
                         <button
                           type="submit"
                           disabled={savingProfile}
-                          className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:brightness-110 text-white text-xs font-semibold shadow-lg shadow-indigo-500/20 transition cursor-pointer disabled:opacity-50"
+                          className="flex-1 py-3 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-md transition cursor-pointer disabled:opacity-50"
                         >
                           {savingProfile ? "Menyimpan..." : "Simpan Perubahan"}
                         </button>
                       </div>
                     </form>
                   ) : (
-                    /* View Profile Mode */
                     <div className="space-y-6">
-                      {/* Profile Header Avatar */}
                       <div className="flex flex-col items-center space-y-3 pb-2">
-                        <div className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-violet-500/20 bg-violet-600/5 flex items-center justify-center text-5xl shadow-lg shadow-violet-500/5 select-none">
+                        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#5A77DF]/30 bg-[#5A77DF]/10 flex items-center justify-center text-5xl select-none shadow-sm">
                           {student.avatar ? (
-                            student.avatar.startsWith("data:") ||
-                            student.avatar.startsWith("http") ? (
-                              <img
-                                src={student.avatar}
-                                alt="Avatar"
-                                className="h-full w-full object-cover"
-                              />
+                            student.avatar.startsWith("data:") || student.avatar.startsWith("http") ? (
+                              <img src={student.avatar} alt="Avatar" className="h-full w-full object-cover" />
                             ) : (
                               student.avatar
                             )
                           ) : (
-                            <span className="text-violet-400 font-bold text-xl">
-                              {student.name.charAt(0).toUpperCase()}
-                            </span>
+                            <span className="text-[#5A77DF] font-black text-2xl">{student.name.charAt(0).toUpperCase()}</span>
                           )}
                         </div>
                         <div className="text-center">
-                          <h3 className="text-base font-extrabold text-zinc-100">
-                            {student.name}
-                          </h3>
-                          <p className="text-3xs text-violet-400 font-semibold mt-0.5">
-                            @{student.username}
-                          </p>
-                          <p className="text-3xs text-zinc-500 font-mono mt-0.5">
-                            Siswa • NIS: {student.nis}
-                          </p>
+                          <h3 className="text-base font-black text-zinc-900">{student.name}</h3>
+                          <p className="text-2xs text-[#5A77DF] font-bold mt-0.5">@{student.username}</p>
+                          <p className="text-2xs text-zinc-500 font-mono mt-0.5 font-medium">Siswa • NIS: {student.nis}</p>
                         </div>
                       </div>
 
-                      {/* Details Grid */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
-                        <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01]">
-                          <div className="text-3xs uppercase tracking-wider text-zinc-500 mb-1">
-                            Kelas
-                          </div>
-                          <div className="font-bold text-zinc-100">
-                            {student.class}
-                          </div>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Kelas</div>
+                          <div className="font-extrabold text-zinc-900">{student.class}</div>
                         </div>
-                        <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01]">
-                          <div className="text-3xs uppercase tracking-wider text-zinc-500 mb-1">
-                            Tingkat Literasi Digital
-                          </div>
-                          <div className="font-bold text-violet-400 uppercase">
-                            {student.literacy_level}
-                          </div>
-                        </div>
-                        <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01]">
-                          <div className="text-3xs uppercase tracking-wider text-zinc-500 mb-1">
-                            Kondisi Kesehatan Mental
-                          </div>
-                          <div className="font-bold text-indigo-400 uppercase">
-                            {student.mental_level}
-                          </div>
-                        </div>
-                        <div className="p-4 rounded-xl border border-white/5 bg-white/[0.01]">
-                          <div className="text-3xs uppercase tracking-wider text-zinc-500 mb-1">
-                            Total Lencana Terbuka
-                          </div>
-                          <div className="font-bold text-emerald-400">
-                            {badges.unlocked.length} / {badges.all.length}
-                          </div>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Hasil SRQ-29 Status Mental</div>
+                          <div className="font-extrabold text-[#3E53A2] uppercase">{student.mental_level}</div>
                         </div>
                       </div>
 
-                      {/* Actions */}
+                      {/* Keamanan & Ganti Password Section */}
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 p-5 text-left space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Lock className="h-5 w-5 text-[#5A77DF]" />
+                            <h4 className="text-sm font-extrabold text-zinc-900">Keamanan & Ganti Password</h4>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowChangePasswordModal(!showChangePasswordModal)}
+                            className="text-2xs font-extrabold text-[#3E53A2] hover:underline cursor-pointer"
+                          >
+                            {showChangePasswordModal ? "Tutup Form" : "Ubah Password"}
+                          </button>
+                        </div>
+
+                        {showChangePasswordModal && (
+                          <form onSubmit={handleChangePasswordSubmit} className="space-y-4 pt-2 border-t border-[#5A77DF]/15">
+                            {changePasswordMessage && (
+                              <div className={`p-3.5 rounded-xl text-2xs font-bold ${changePasswordMessage.type === "success" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : "bg-rose-500/10 text-rose-600 border border-rose-500/20"}`}>
+                                {changePasswordMessage.text}
+                              </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                              <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Password Lama</label>
+                              <div className="relative">
+                                <input
+                                  type={showOldPass ? "text" : "password"}
+                                  required
+                                  value={oldPasswordInput}
+                                  onChange={(e) => setOldPasswordInput(e.target.value)}
+                                  placeholder="Masukkan password saat ini"
+                                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowOldPass(!showOldPass)}
+                                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
+                                >
+                                  {showOldPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Password Baru</label>
+                                <div className="relative">
+                                  <input
+                                    type={showNewPass ? "text" : "password"}
+                                    required
+                                    value={newPasswordInput}
+                                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                                    placeholder="Minimal 6 karakter"
+                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowNewPass(!showNewPass)}
+                                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
+                                  >
+                                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Konfirmasi Password Baru</label>
+                                <div className="relative">
+                                  <input
+                                    type={showConfirmPass ? "text" : "password"}
+                                    required
+                                    value={confirmPasswordInput}
+                                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                                    placeholder="Ulangi password baru"
+                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPass(!showConfirmPass)}
+                                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
+                                  >
+                                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={changePasswordLoading}
+                              className="w-full py-2.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-sm transition cursor-pointer disabled:opacity-50"
+                            >
+                              {changePasswordLoading ? "Memproses..." : "Simpan Password Baru"}
+                            </button>
+                          </form>
+                        )}
+                      </div>
+
                       <div className="space-y-3 pt-2">
                         <button
                           onClick={handleLogout}
-                          className="w-full py-3.5 rounded-xl border border-red-500/20 bg-red-950/10 hover:bg-red-950/20 text-red-400 text-xs font-semibold tracking-wide transition active:scale-[0.98] cursor-pointer"
+                          className="w-full py-3.5 rounded-xl border border-rose-500/30 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2"
                         >
-                          Keluar dari Akun (Logout)
+                          <LogOut className="h-4 w-4" /> Keluar dari Akun (Logout)
                         </button>
                       </div>
                     </div>
@@ -1615,81 +2128,91 @@ export default function StudentDashboard() {
                 </div>
               )}
 
+              {/* TAB 6: CHAT BK */}
               {activeTab === "chat_bk" && (
                 <div className="space-y-6 animate-fadeIn">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">
-                      Konsultasi Bimbingan Konseling (BK)
-                    </h2>
-                    <p className="text-2xs text-zinc-400">
+                  {/* Top Header Card */}
+                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-2">
+                    <div className="flex items-center gap-3">
+                      <MessageSquare className="h-6 w-6 text-[#5A77DF]" />
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Konsultasi Bimbingan Konseling (BK)</h2>
+                    </div>
+                    <p className="text-xs text-zinc-600 leading-relaxed">
                       Diskusikan kondisi kesehatan mental atau masalah akademik Anda secara aman bersama Guru BK sekolah.
                     </p>
                   </div>
 
                   <div className="grid gap-6 md:grid-cols-[1fr_2.5fr]">
-                    {/* Counselor list */}
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl h-fit">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3">Guru BK Aktif</h3>
+                    {/* Left Contact Sidebar Card */}
+                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm h-fit space-y-3">
+                      <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" /> Guru BK Aktif
+                      </h3>
                       {bkTeachers.length === 0 ? (
-                        <p className="text-xs text-zinc-500 italic">Tidak ada guru BK terdaftar.</p>
+                        <p className="text-xs text-zinc-500 italic py-2">Tidak ada guru BK terdaftar.</p>
                       ) : (
                         <div className="space-y-2">
-                          {bkTeachers.map((teacher) => {
-                            const isSelected = activeTeacherId === teacher.id;
-                            return (
-                              <button
-                                key={teacher.id}
-                                onClick={() => setActiveTeacherId(teacher.id)}
-                                className={`w-full text-left p-3 rounded-xl border text-xs transition ${
-                                  isSelected
-                                    ? "border-violet-500 bg-violet-600/10 text-violet-300 font-semibold"
-                                    : "border-white/5 bg-black/10 text-zinc-400 hover:border-white/10 hover:text-zinc-200"
-                                }`}
-                              >
-                                👩‍🏫 {teacher.name}
-                              </button>
-                            );
-                          })}
+                          {bkTeachers.map((teacher: any) => (
+                            <button
+                              key={teacher.id}
+                              onClick={() => setActiveTeacherId(teacher.id)}
+                              className={`w-full text-left p-3 rounded-xl border text-xs transition flex items-center gap-2.5 cursor-pointer ${
+                                activeTeacherId === teacher.id
+                                  ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] font-extrabold shadow-2xs"
+                                  : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF]/50 hover:bg-zinc-50 font-medium"
+                              }`}
+                            >
+                              <div className="h-8 w-8 rounded-full bg-[#5A77DF]/10 text-[#5A77DF] flex items-center justify-center shrink-0 font-bold">
+                                <GraduationCap className="h-4 w-4 text-[#5A77DF]" />
+                              </div>
+                              <div className="flex flex-col text-left truncate">
+                                <span className="truncate font-bold">{teacher.name}</span>
+                                <span className="text-[10px] text-zinc-500 font-medium truncate">
+                                  {teacher.class?.name ? `Guru BK ${teacher.class.name}` : "Guru BK Pembimbing"}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
 
-                    {/* Chat Box */}
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur-xl flex flex-col h-[450px]">
+                    {/* Right Main Chat Card */}
+                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm flex flex-col h-[480px]">
                       {activeTeacherId ? (
                         <>
                           <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-3">
                             {loadingChat ? (
-                              <div className="text-center text-xs text-zinc-400 mt-10">Memuat pesan...</div>
+                              <div className="text-center text-xs text-zinc-500 mt-12 font-medium">Memuat pesan...</div>
                             ) : chatMessages.length === 0 ? (
-                              <div className="text-center text-xs text-zinc-500 mt-10">Belum ada percakapan. Mulai percakapan pertama Anda dengan mengirim pesan di bawah!</div>
+                              <div className="text-center text-xs text-zinc-500 mt-12 italic">Belum ada percakapan. Kirim pesan pertama Anda di bawah!</div>
                             ) : (
                               chatMessages.map((msg) => {
                                 const isSelf = msg.sender === "student";
                                 return (
                                   <div key={msg.id} className={`flex flex-col ${isSelf ? "items-end" : "items-start"}`}>
-                                    <span className="text-3xs text-zinc-500 mb-1">{isSelf ? "Anda" : "Guru BK"}</span>
-                                    <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${isSelf ? "bg-violet-600 text-white rounded-tr-none" : "bg-white/10 text-zinc-200 rounded-tl-none"}`}>
+                                    <span className="text-3xs font-extrabold text-zinc-500 mb-1">{isSelf ? "Anda" : "Guru BK"}</span>
+                                    <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs font-medium leading-relaxed ${isSelf ? "bg-[#5A77DF] text-white rounded-tr-none shadow-xs" : "bg-zinc-100 text-zinc-900 border border-zinc-200 rounded-tl-none"}`}>
                                       {msg.message}
                                     </div>
-                                    <span className="text-[9px] text-zinc-600 mt-1">{new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+                                    <span className="text-[9px] text-zinc-500 mt-1 font-mono">{new Date(msg.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
                                   </div>
                                 );
                               })
                             )}
                           </div>
 
-                          <form onSubmit={handleSendChat} className="flex gap-2 pt-3 border-t border-white/5">
+                          <form onSubmit={handleSendChat} className="flex gap-2 pt-3 border-t border-zinc-100">
                             <input
                               type="text"
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
-                              placeholder="Ketik pesan konsultasi Anda..."
-                              className="flex-1 rounded-xl bg-black/20 border border-white/10 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-violet-500"
+                              placeholder="Ketik pesan konsultasi..."
+                              className="flex-1 rounded-xl bg-zinc-50 border border-zinc-200 px-4 py-2.5 text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
                             />
                             <button
                               type="submit"
-                              className="rounded-xl bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white transition"
+                              className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition cursor-pointer flex items-center gap-1.5"
                             >
                               Kirim
                             </button>
@@ -1708,6 +2231,471 @@ export default function StudentDashboard() {
           </div>
         </div>
       </div>
+
+      {/* POPUP MODAL: ISI JURNAL */}
+      {showFillModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { setShowFillModal(false); setJournalMessage(null); }}
+              className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 text-sm cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-2 mb-4 border-b border-zinc-100 pb-3">
+              <PenTool className="h-5 w-5 text-[#5A77DF]" />
+              <h3 className="text-base font-black text-zinc-900">Isi Jurnal Refleksi Harian</h3>
+            </div>
+
+            <form onSubmit={handleSubmitJournal} className="space-y-4">
+              {journalMessage && (
+                <div className={`p-4 rounded-xl text-xs font-semibold ${journalMessage.includes("berhasil") ? "bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30" : "bg-rose-50 text-rose-600 border border-rose-200"}`}>
+                  {journalMessage}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Tanggal Jurnal</label>
+                <input
+                  type="date"
+                  value={selectedFillDate}
+                  readOnly
+                  disabled
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-700 outline-none font-medium"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Bagaimana Perasaanmu?</label>
+                <div className="flex items-center justify-between gap-2 py-2">
+                  {MOOD_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji.score}
+                      type="button"
+                      onClick={() => setMoodScore(emoji.score)}
+                      className={`flex-1 rounded-2xl border py-3 px-1 flex flex-col items-center justify-center gap-2 transition cursor-pointer ${
+                        moodScore === emoji.score 
+                          ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] font-black shadow-xs scale-105" 
+                          : "border-zinc-200 bg-white text-zinc-600 hover:border-[#5A77DF]/40 hover:bg-zinc-50"
+                      }`}
+                    >
+                      {emoji.icon}
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider">{emoji.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Screen Time Hari Ini</label>
+                <select
+                  value={journalActivities}
+                  onChange={(e) => setJournalActivities(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-800 outline-none"
+                >
+                  <option value="">Pilih durasi screen time</option>
+                  <option value="< 1 jam">Kurang dari 1 jam</option>
+                  <option value="1-2 jam">1 - 2 jam</option>
+                  <option value="2-4 jam">2 - 4 jam</option>
+                  <option value="4-6 jam">4 - 6 jam</option>
+                  <option value="> 6 jam">Lebih dari 6 jam</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">Catatan Refleksi</label>
+                <textarea
+                  rows={3}
+                  placeholder="Tuliskan refleksimu hari ini..."
+                  value={journalNotes}
+                  onChange={(e) => setJournalNotes(e.target.value)}
+                  required
+                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-800 outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={submittingJournal}
+                  className="flex-1 rounded-xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] py-3 text-xs font-bold text-white shadow-lg transition cursor-pointer disabled:opacity-50"
+                >
+                  {submittingJournal ? "Menyimpan..." : "Simpan Jurnal"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: PRETEST PENEMPATAN LEVEL MAPEL */}
+      {showSubjectPretestModal && activeSubject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto text-zinc-900 space-y-6">
+            <button
+              type="button"
+              onClick={() => setShowSubjectPretestModal(false)}
+              className="absolute right-5 top-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+              title="Tutup Modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="border-b border-zinc-150 pb-4">
+              <span className="text-3xs uppercase tracking-widest text-[#5A77DF] font-black font-mono">
+                Pretest Penempatan Level
+              </span>
+              <h2 className="text-xl font-black text-zinc-900 mt-1">
+                Mata Pelajaran: {activeSubject.name}
+              </h2>
+            </div>
+
+            {loadingSubjectQuiz ? (
+              <div className="py-12 text-center space-y-3">
+                <div className="h-10 w-10 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs text-zinc-500 font-medium">Menyiapkan Lembar Soal Pretest...</p>
+              </div>
+            ) : subjectPretestResult ? (
+              <div className="py-6 text-center space-y-5 animate-fadeIn">
+                <div className="h-16 w-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-xs">
+                  ✓
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Hasil Pretest Penempatan</h3>
+                  <div className="text-3xl font-black text-[#5A77DF]">
+                    Level: {subjectPretestResult.subjectLevel} ({subjectPretestResult.score}%)
+                  </div>
+                </div>
+                <p className="text-xs text-zinc-600 max-w-md mx-auto leading-relaxed font-medium">
+                  {subjectPretestResult.summaryText}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowSubjectPretestModal(false)}
+                  className="w-full max-w-xs rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-extrabold text-white shadow-md transition cursor-pointer"
+                >
+                  Buka Modul Belajar
+                </button>
+              </div>
+            ) : subjectQuiz && subjectQuiz.questions ? (
+              <div className="space-y-6">
+                {/* Navigator Header */}
+                <div className="flex items-center justify-between text-xs text-zinc-500 font-bold font-mono border-b border-zinc-150 pb-3">
+                  <span>Soal {subjectPretestIndex + 1} dari {subjectQuiz.questions.length}</span>
+                  <span className="text-[#5A77DF] font-extrabold">
+                    {Object.keys(subjectAnswers).length}/{subjectQuiz.questions.length} Terjawab
+                  </span>
+                </div>
+
+                {/* Current Question */}
+                {(() => {
+                  const q = subjectQuiz.questions[subjectPretestIndex];
+                  if (!q) return null;
+
+                  return (
+                    <div className="space-y-4 text-left">
+                      <p className="text-sm font-bold leading-relaxed text-zinc-900">
+                        {q.question}
+                      </p>
+
+                      <div className="grid grid-cols-1 gap-2.5 pt-2">
+                        {q.options.map((opt: any) => {
+                          const isSelected = subjectAnswers[q.id] === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setSubjectAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
+                              className={`w-full text-left rounded-xl border px-4 py-3.5 text-xs font-bold transition cursor-pointer ${
+                                isSelected
+                                  ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] shadow-2xs font-extrabold"
+                                  : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF]/40 hover:bg-zinc-50"
+                              }`}
+                            >
+                              {opt.option_text}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Bottom Bar */}
+                <div className="flex items-center justify-between border-t border-zinc-150 pt-5">
+                  <button
+                    type="button"
+                    onClick={() => setSubjectPretestIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={subjectPretestIndex === 0}
+                    className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-5 py-2.5 text-xs font-bold text-zinc-700 disabled:opacity-30 cursor-pointer shadow-2xs"
+                  >
+                    Sebelumnya
+                  </button>
+
+                  {subjectPretestIndex === subjectQuiz.questions.length - 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleSubmitSubjectPretest}
+                      disabled={submittingSubjectPretest}
+                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {submittingSubjectPretest ? "Mengirim..." : "Kirim Jawaban Pretest"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSubjectPretestIndex((prev) => Math.min(subjectQuiz.questions.length - 1, prev + 1))}
+                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
+                    >
+                      Selanjutnya
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500 italic text-center">Soal pretest belum tersedia.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: SCREENING BULANAN SRQ-29 */}
+      {showMonthlySrqModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto text-zinc-900 space-y-6">
+            <button
+              type="button"
+              onClick={() => setShowMonthlySrqModal(false)}
+              className="absolute right-5 top-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+              title="Tutup Modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="border-b border-zinc-150 pb-4">
+              <span className="text-3xs uppercase tracking-widest text-[#5A77DF] font-black font-mono">
+                Screening Bulanan SRQ-29
+              </span>
+              <h2 className="text-xl font-black text-zinc-900 mt-1">
+                Kuesioner Evaluasi Kesehatan Mental
+              </h2>
+            </div>
+
+            {loadingMonthlySrq ? (
+              <div className="py-12 text-center space-y-3">
+                <div className="h-10 w-10 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs text-zinc-500 font-medium">Menyiapkan Kuesioner SRQ-29...</p>
+              </div>
+            ) : monthlySrqResult ? (
+              <div className="py-6 text-center space-y-5 animate-fadeIn">
+                <div className="h-16 w-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-xs">
+                  ✓
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Hasil Screening Bulanan Berhasil Disimpan</h3>
+                  <div className="text-2xl font-black text-[#5A77DF]">
+                    Status: {monthlySrqResult.mentalLevel}
+                  </div>
+                </div>
+                <p className="text-xs text-zinc-600 max-w-md mx-auto leading-relaxed font-medium">
+                  {monthlySrqResult.summaryText}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowMonthlySrqModal(false)}
+                  className="w-full max-w-xs rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-extrabold text-white shadow-md transition cursor-pointer"
+                >
+                  Kembali ke Dashboard
+                </button>
+              </div>
+            ) : monthlySrqQuiz && monthlySrqQuiz.questions ? (
+              <div className="space-y-6">
+                {/* Navigator Header */}
+                <div className="flex items-center justify-between text-xs text-zinc-500 font-bold font-mono border-b border-zinc-150 pb-3">
+                  <span>Soal {monthlySrqIndex + 1} dari {monthlySrqQuiz.questions.length}</span>
+                  <span className="text-[#5A77DF] font-extrabold">
+                    {Object.keys(monthlySrqAnswers).length}/{monthlySrqQuiz.questions.length} Terjawab
+                  </span>
+                </div>
+
+                {/* Current Question */}
+                {(() => {
+                  const q = monthlySrqQuiz.questions[monthlySrqIndex];
+                  if (!q) return null;
+
+                  return (
+                    <div className="space-y-4 text-left">
+                      <p className="text-sm font-bold leading-relaxed text-zinc-900">
+                        {monthlySrqIndex + 1}. {q.question}
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        {q.options.map((opt: any) => {
+                          const isSelected = monthlySrqAnswers[q.id] === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setMonthlySrqAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
+                              className={`w-full text-center rounded-xl border py-4 text-xs font-extrabold transition cursor-pointer ${
+                                isSelected
+                                  ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] shadow-2xs font-extrabold"
+                                  : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF]/40 hover:bg-zinc-50"
+                              }`}
+                            >
+                              {opt.option_text}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Bottom Bar */}
+                <div className="flex items-center justify-between border-t border-zinc-150 pt-5">
+                  <button
+                    type="button"
+                    onClick={() => setMonthlySrqIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={monthlySrqIndex === 0}
+                    className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-5 py-2.5 text-xs font-bold text-zinc-700 disabled:opacity-30 cursor-pointer shadow-2xs"
+                  >
+                    Sebelumnya
+                  </button>
+
+                  {monthlySrqIndex === monthlySrqQuiz.questions.length - 1 ? (
+                    <button
+                      type="button"
+                      onClick={handleSubmitMonthlySrq}
+                      disabled={submittingMonthlySrq}
+                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
+                    >
+                      {submittingMonthlySrq ? "Mengirim..." : "Kirim Hasil Screening"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setMonthlySrqIndex((prev) => Math.min(monthlySrqQuiz.questions.length - 1, prev + 1))}
+                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
+                    >
+                      Selanjutnya
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500 italic text-center">Soal screening belum tersedia.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* POPUP MODAL: DETAIL JURNAL (READ-ONLY) */}
+      {showDetailModal && selectedDetailJournal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-xl rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDetailModal(false);
+                setSelectedDetailJournal(null);
+              }}
+              className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 text-sm cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-zinc-100 pb-4 mb-4">
+              <BookOpen className="h-5 w-5 text-[#5A77DF]" />
+              <div>
+                <h3 className="text-base font-black text-zinc-900">Hasil Jurnal Refleksi Harian</h3>
+                <p className="text-xs text-zinc-600 font-mono font-bold mt-0.5">
+                  Tanggal: {new Date(selectedDetailJournal.logged_at).toLocaleDateString("id-ID", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric"
+                  })}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Mood Indicator */}
+              <div className="p-4 rounded-2xl border border-zinc-200 bg-zinc-50 space-y-2">
+                <span className="text-3xs uppercase tracking-wider text-[#5A77DF] font-black font-mono">
+                  Suasana Hati (Mood)
+                </span>
+                <div className="flex items-center gap-3 pt-1">
+                  {(() => {
+                    const mood = MOOD_EMOJIS.find(m => m.score === selectedDetailJournal.mood_score);
+                    return (
+                      <>
+                        <div className="p-2 rounded-xl bg-white border border-zinc-200 shadow-2xs">
+                          {mood?.icon || <Meh className="w-7 h-7 text-[#5A77DF]" />}
+                        </div>
+                        <div>
+                          <p className="font-black text-sm text-zinc-900">{mood?.label || "Biasa"}</p>
+                          <p className="text-2xs text-zinc-600 font-bold">Skor Mood: {selectedDetailJournal.mood_score}/5</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Screen Time / Activity */}
+              <div className="p-4 rounded-2xl border border-zinc-200 bg-zinc-50 space-y-1.5">
+                <span className="text-3xs uppercase tracking-wider text-[#5A77DF] font-black font-mono">
+                  Durasi Screen Time / Aktivitas
+                </span>
+                <p className="font-extrabold text-zinc-900">
+                  {selectedDetailJournal.activities || selectedDetailJournal.screen_time || "-"}
+                </p>
+              </div>
+
+              {/* Reflection Notes */}
+              <div className="p-4 rounded-2xl border border-zinc-200 bg-zinc-50 space-y-1.5">
+                <span className="text-3xs uppercase tracking-wider text-[#5A77DF] font-black font-mono">
+                  Catatan Refleksi Siswa
+                </span>
+                <p className="text-zinc-800 leading-relaxed whitespace-pre-wrap font-medium">
+                  {selectedDetailJournal.notes || "-"}
+                </p>
+              </div>
+
+              {/* AI Feedback / Response */}
+              <div className="p-4.5 rounded-2xl border border-[#5A77DF]/30 bg-[#5A77DF]/5 space-y-2 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-[#5A77DF]" />
+                  <span className="text-3xs uppercase tracking-wider text-[#3E53A2] font-black font-mono">
+                    Tanggapan & Analisis AI DigiMind
+                  </span>
+                </div>
+                <p className="text-zinc-900 text-xs leading-relaxed italic bg-white p-3.5 rounded-xl border border-[#5A77DF]/20 font-medium">
+                  &quot;{selectedDetailJournal.ai_feedback || selectedDetailJournal.aiFeedback || "Terima kasih telah mencatat jurnal refleksi harianmu. Pertahankan kesadaran diri dan pola hidup sehat!"}&quot;
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDetailModal(false);
+                  setSelectedDetailJournal(null);
+                }}
+                className="w-full rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
+              >
+                Tutup Detail Jurnal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

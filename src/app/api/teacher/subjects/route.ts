@@ -29,20 +29,67 @@ export async function GET() {
     }
 
     const subjects = await prisma.subject.findMany({
-      where: { teacher_id: teacher.id },
+      where: teacher.type === "wali_kelas" && teacher.class_id
+        ? { class_id: teacher.class_id }
+        : { teacher_id: teacher.id },
       include: {
         class: true,
+        quizzes: {
+          include: {
+            questions: {
+              include: {
+                options: true,
+              },
+            },
+          },
+        },
         modules: {
           include: {
-            quizzes: true
-          }
-        }
-      }
+            quizzes: {
+              include: {
+                questions: {
+                  include: {
+                    options: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
+
+    const dbSubjects = await prisma.subject.findMany({
+      select: { name: true },
+      distinct: ["name"]
+    });
+
+    const defaultNames = [
+      "Matematika",
+      "Bahasa Indonesia",
+      "Bahasa Inggris",
+      "Informatika",
+      "Fisika",
+      "Kimia",
+      "Biologi",
+      "Ekonomi",
+      "Geografi",
+      "Sosiologi",
+      "Sejarah",
+      "Pendidikan Pancasila",
+      "Seni Budaya",
+      "PJOK",
+      "Literasi Digital & Kesehatan Mental"
+    ];
+
+    const allSubjectNames = Array.from(
+      new Set([...dbSubjects.map((s) => s.name), ...defaultNames])
+    ).sort();
 
     return NextResponse.json({
       success: true,
-      subjects
+      subjects,
+      allSubjectNames
     });
 
   } catch (error: any) {
@@ -106,37 +153,42 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if subject already exists for this class by this teacher
+    // Check if subject already exists for this class
     const existingSubject = await prisma.subject.findFirst({
       where: {
         name: name.trim(),
-        class_id: parseInt(classId),
-        teacher_id: teacher.id
+        class_id: parseInt(classId)
       }
     });
 
+    let targetSubject;
     if (existingSubject) {
-      return NextResponse.json(
-        { success: false, message: "Anda sudah mengampu mata pelajaran ini di kelas tersebut." },
-        { status: 400 }
-      );
-    }
-
-    const newSubject = await prisma.subject.create({
-      data: {
-        name: name.trim(),
-        class_id: parseInt(classId),
-        teacher_id: teacher.id
-      },
-      include: {
-        class: true
+      if (existingSubject.teacher_id === teacher.id) {
+        return NextResponse.json(
+          { success: false, message: "Anda sudah mengampu mata pelajaran ini di kelas tersebut." },
+          { status: 400 }
+        );
       }
-    });
+      targetSubject = await prisma.subject.update({
+        where: { id: existingSubject.id },
+        data: { teacher_id: teacher.id },
+        include: { class: true }
+      });
+    } else {
+      targetSubject = await prisma.subject.create({
+        data: {
+          name: name.trim(),
+          class_id: parseInt(classId),
+          teacher_id: teacher.id
+        },
+        include: { class: true }
+      });
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Mata pelajaran berhasil ditambahkan!",
-      subject: newSubject
+      message: "Mata pelajaran berhasil ditambahkan.",
+      subject: targetSubject
     });
 
   } catch (error: any) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 interface ClassOption {
   id: number;
@@ -33,10 +34,8 @@ export default function RegisterPage() {
 
   // Teacher specific States
   const [nip, setNip] = useState("");
-  const [specialization, setSpecialization] = useState("");
-  const [position, setPosition] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [teacherType, setTeacherType] = useState<"subject" | "bk">("subject");
+  const [teacherType, setTeacherType] = useState<"subject" | "bk" | "wali_kelas">("subject");
   const [teacherClassId, setTeacherClassId] = useState("");
   const [teacherSubjectId, setTeacherSubjectId] = useState("");
 
@@ -87,13 +86,19 @@ export default function RegisterPage() {
     } else {
       payload.name = name;
       payload.nip = nip;
-      payload.specialization = specialization;
-      payload.position = position;
+      payload.specialization = "";
+      payload.position = teacherType === "bk"
+        ? "Guru Bimbingan Konseling"
+        : teacherType === "wali_kelas"
+        ? "Wali Kelas"
+        : "Guru Mata Pelajaran";
       payload.phone_number = phoneNumber;
       payload.teacher_type = teacherType;
       if (teacherType === "subject") {
         payload.teacher_class_id = teacherClassId;
         payload.teacher_subject_id = teacherSubjectId;
+      } else if (teacherType === "wali_kelas" || teacherType === "bk") {
+        payload.teacher_class_id = teacherClassId;
       }
     }
 
@@ -120,8 +125,6 @@ export default function RegisterPage() {
       setClassId("");
       setNis("");
       setNip("");
-      setSpecialization("");
-      setPosition("");
       setPhoneNumber("");
       setTeacherClassId("");
       setTeacherSubjectId("");
@@ -139,338 +142,357 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-radial from-[#1e1b4b] via-[#090514] to-[#03000a] px-4 py-12 font-sans text-white">
-      {/* Decorative Blur Orbs */}
-      <div className="absolute -top-40 -right-40 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl" />
-      <div className="absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" />
-
-      {/* Main Container */}
-      <div className="w-full max-w-lg z-10">
+    <div className="min-h-screen w-full bg-white text-zinc-900 font-sans">
+      <div className="grid grid-cols-1 lg:grid-cols-2 min-h-screen w-full">
         
-        {/* App Title */}
-        <div className="mb-6 text-center">
-          <h1 className="bg-gradient-to-r from-violet-400 via-indigo-200 to-cyan-300 bg-clip-text text-3xl font-extrabold tracking-tight text-transparent">
-            Digimind
-          </h1>
-          <p className="mt-1 text-xs text-zinc-400">
-            Pendaftaran Akun Baru Platform Digimind
-          </p>
-        </div>
-
-        {/* Card */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 shadow-2xl backdrop-blur-xl transition-all duration-300">
-          
-          <h2 className="text-xl font-bold text-center text-zinc-100 mb-6">
-            Daftar Akun Baru
-          </h2>
-
-          {/* Sliding Toggle */}
-          <div className="relative mb-8 flex rounded-full bg-zinc-950 p-1 border border-white/5">
-            <div
-              className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 transition-all duration-300 ease-out ${
-                role === "teacher" ? "translate-x-full" : "translate-x-0"
-              }`}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setRole("student");
-                setError(null);
-              }}
-              className={`relative z-10 w-1/2 rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${
-                role === "student" ? "text-white" : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Registrasi Siswa
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setRole("teacher");
-                setError(null);
-              }}
-              className={`relative z-10 w-1/2 rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${
-                role === "teacher" ? "text-white" : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Registrasi Guru
-            </button>
-          </div>
-
-          {/* Alerts */}
-          {error && (
-            <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-400 animate-pulse">
-              ⚠️ {error}
-            </div>
-          )}
-          {success && (
-            <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-400">
-              ✅ {success}
-            </div>
-          )}
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Left Section: 50% Form Area */}
+        <div className="flex flex-col justify-center items-center px-6 py-10 sm:px-12 md:px-16 w-full max-w-xl mx-auto lg:max-w-none">
+          <div className="w-full max-w-lg">
             
-            {/* 2-Column Layout for Basic Info */}
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Nama Lengkap
-                </label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="Nama Lengkap Anda"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05] focus:ring-2 focus:ring-violet-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Username
-                </label>
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  placeholder="Username unik"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05] focus:ring-2 focus:ring-violet-500/20"
-                />
-              </div>
+            {/* App Title */}
+            <div className="mb-6 text-center flex flex-col items-center">
+              <img src="/logo.png" alt="DigiMind Logo" className="h-16 sm:h-20 w-auto object-contain mb-2" />
+              <p className="text-xs text-zinc-600 font-medium">
+                Pendaftaran Akun Baru Platform Digimind
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="contoh@sekolah.sch.id"
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05] focus:ring-2 focus:ring-violet-500/20"
-                />
-              </div>
+            <h2 className="text-xl font-bold text-center text-zinc-900 mb-6">
+              Daftar Akun Baru
+            </h2>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="Min. 6 karakter"
-                  minLength={6}
-                  className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05] focus:ring-2 focus:ring-violet-500/20"
-                />
-              </div>
+            {/* Sliding Role Toggle */}
+            <div className="relative mb-6 flex rounded-full bg-zinc-100 p-1 border border-zinc-200">
+              <div
+                className={`absolute top-1 bottom-1 left-1 w-[calc(50%-4px)] rounded-full bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] transition-all duration-300 ease-out shadow-sm ${
+                  role === "teacher" ? "translate-x-full" : "translate-x-0"
+                }`}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setRole("student");
+                  setError(null);
+                }}
+                className={`relative z-10 w-1/2 rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 cursor-pointer ${
+                  role === "student" ? "text-white" : "text-zinc-600 hover:text-zinc-900"
+                }`}
+              >
+                Registrasi Siswa
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRole("teacher");
+                  setError(null);
+                }}
+                className={`relative z-10 w-1/2 rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 cursor-pointer ${
+                  role === "teacher" ? "text-white" : "text-zinc-600 hover:text-zinc-900"
+                }`}
+              >
+                Registrasi Guru
+              </button>
             </div>
 
-            {/* Dynamic Role Fields */}
-            {role === "student" ? (
-              <div className="pt-4 border-t border-white/5 space-y-5 animate-fadeIn">
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      NIS (Nomor Induk Siswa)
-                    </label>
-                    <input
-                      type="text"
-                      value={nis}
-                      onChange={(e) => setNis(e.target.value)}
-                      required
-                      placeholder="Masukkan NIS Anda"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      Kelas
-                    </label>
-                    {loadingClasses ? (
-                      <div className="text-sm text-zinc-500 py-3">Memuat daftar kelas...</div>
-                    ) : (
-                      <select
-                        value={classId}
-                        onChange={(e) => setClassId(e.target.value)}
-                        required
-                        className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
-                      >
-                        <option value="" className="text-zinc-600">-- Pilih Kelas Anda --</option>
-                        {classes.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.major})
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-2 text-2xs text-zinc-500">
-                  *Pilihan kelas di atas didapat dari basis data sekolah lokal Anda.
-                </p>
+            {/* Alerts */}
+            {error && (
+              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600 animate-pulse font-medium flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{error}</span>
               </div>
-            ) : (
-              <div className="pt-4 border-t border-white/5 space-y-5 animate-fadeIn">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                    Tipe Guru
-                  </label>
-                  <select
-                    value={teacherType}
-                    onChange={(e) => setTeacherType(e.target.value as "subject" | "bk")}
-                    className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
-                  >
-                    <option value="subject">Guru Mata Pelajaran</option>
-                    <option value="bk">Guru Bimbingan Konseling (BK)</option>
-                  </select>
-                </div>
-
-                {teacherType === "subject" && (
-                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 animate-fadeIn">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                        Kelas Awal yang Diampu
-                      </label>
-                      <select
-                        value={teacherClassId}
-                        onChange={(e) => {
-                          setTeacherClassId(e.target.value);
-                          setTeacherSubjectId(""); // Reset subject when class changes
-                        }}
-                        required
-                        className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
-                      >
-                        <option value="" className="text-zinc-600">-- Pilih Kelas --</option>
-                        {classes.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.major})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                        Mata Pelajaran Awal
-                      </label>
-                      <select
-                        value={teacherSubjectId}
-                        onChange={(e) => setTeacherSubjectId(e.target.value)}
-                        required
-                        disabled={!teacherClassId}
-                        className="w-full rounded-xl border border-white/10 bg-zinc-950 px-4 py-3 text-sm text-white outline-hidden transition-all focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
-                      >
-                        <option value="" className="text-zinc-600">-- Pilih Mata Pelajaran --</option>
-                        {(classes.find(c => c.id.toString() === teacherClassId)?.subjects || []).map((sub) => (
-                          <option key={sub.id} value={sub.id}>
-                            {sub.name} {sub.teacher_id ? "(Sudah ada guru)" : "(Tersedia)"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      NIP / NUPTK
-                    </label>
-                    <input
-                      type="text"
-                      value={nip}
-                      onChange={(e) => setNip(e.target.value)}
-                      required
-                      placeholder="Nomor Induk Pegawai"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      No. Telp / WhatsApp
-                    </label>
-                    <input
-                      type="text"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      placeholder="08xxxxxxxxxx"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05]"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      Spesialisasi
-                    </label>
-                    <input
-                      type="text"
-                      value={specialization}
-                      onChange={(e) => setSpecialization(e.target.value)}
-                      placeholder="e.g. Literasi Media"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
-                      Jabatan
-                    </label>
-                    <input
-                      type="text"
-                      value={position}
-                      onChange={(e) => setPosition(e.target.value)}
-                      placeholder="e.g. Wali Kelas / Guru BK"
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm text-white placeholder-zinc-500 outline-hidden transition-all focus:border-violet-500 focus:bg-white/[0.05]"
-                    />
-                  </div>
-                </div>
+            )}
+            {success && (
+              <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 font-medium flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{success}</span>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-4 w-full rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 py-3.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all duration-300 hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Membuat Akun...
-                </span>
+            {/* Form Inputs (Original Indonesian language) */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              
+              {/* 2-Column Layout for Basic Info */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                    Nama Lengkap
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    placeholder="Nama Lengkap Anda"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    placeholder="Username unik"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="contoh@sekolah.sch.id"
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    placeholder="Min. 6 karakter"
+                    minLength={6}
+                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Role Fields */}
+              {role === "student" ? (
+                <div className="pt-3 border-t border-zinc-200 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        NIS (Nomor Induk Siswa)
+                      </label>
+                      <input
+                        type="text"
+                        value={nis}
+                        onChange={(e) => setNis(e.target.value)}
+                        required
+                        placeholder="Masukkan NIS Anda"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        Kelas
+                      </label>
+                      {loadingClasses ? (
+                        <div className="text-sm text-zinc-500 py-2.5">Memuat daftar kelas...</div>
+                      ) : (
+                        <select
+                          value={classId}
+                          onChange={(e) => setClassId(e.target.value)}
+                          required
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 cursor-pointer"
+                        >
+                          <option value="" className="text-zinc-500">-- Pilih Kelas Anda --</option>
+                          {classes.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.major})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                </div>
               ) : (
-                "Daftar Sekarang"
+                <div className="pt-3 border-t border-zinc-200 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                      Jabatan Guru *
+                    </label>
+                    <select
+                      value={teacherType}
+                      onChange={(e) => setTeacherType(e.target.value as "subject" | "bk" | "wali_kelas")}
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 cursor-pointer"
+                    >
+                      <option value="subject">Guru Mata Pelajaran</option>
+                      <option value="wali_kelas">Wali Kelas</option>
+                      <option value="bk">Guru Bimbingan Konseling (BK)</option>
+                    </select>
+                  </div>
+
+                  {teacherType === "bk" && (
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        Kelas Binaan Utama Guru BK
+                      </label>
+                      <select
+                        value={teacherClassId}
+                        onChange={(e) => setTeacherClassId(e.target.value)}
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 cursor-pointer"
+                      >
+                        <option value="" className="text-zinc-500">-- Semua Kelas / Pilih Kelas Utama --</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.major})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {teacherType === "wali_kelas" && (
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        Kelas yang Diampu (Wali Kelas) *
+                      </label>
+                      <select
+                        value={teacherClassId}
+                        onChange={(e) => setTeacherClassId(e.target.value)}
+                        required
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 cursor-pointer"
+                      >
+                        <option value="" className="text-zinc-500">-- Pilih Kelas Binaan --</option>
+                        {classes.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.major})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {teacherType === "subject" && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                          Kelas Awal yang Diampu
+                        </label>
+                        <select
+                          value={teacherClassId}
+                          onChange={(e) => {
+                            setTeacherClassId(e.target.value);
+                            setTeacherSubjectId("");
+                          }}
+                          required
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 cursor-pointer"
+                        >
+                          <option value="" className="text-zinc-500">-- Pilih Kelas --</option>
+                          {classes.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.major})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                          Mata Pelajaran Awal
+                        </label>
+                        <select
+                          value={teacherSubjectId}
+                          onChange={(e) => setTeacherSubjectId(e.target.value)}
+                          required
+                          disabled={!teacherClassId}
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 disabled:opacity-50 cursor-pointer"
+                        >
+                          <option value="" className="text-zinc-500">-- Pilih Mata Pelajaran --</option>
+                          {(classes.find(c => c.id.toString() === teacherClassId)?.subjects || []).map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.name} {sub.teacher_id ? "(Sudah ada guru)" : "(Tersedia)"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        NIP / NUPTK
+                      </label>
+                      <input
+                        type="text"
+                        value={nip}
+                        onChange={(e) => setNip(e.target.value)}
+                        required
+                        placeholder="Nomor Induk Pegawai"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-700 mb-2">
+                        No. Telp / WhatsApp
+                      </label>
+                      <input
+                        type="text"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        placeholder="08xxxxxxxxxx"
+                        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 outline-hidden transition-all focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20"
+                      />
+                    </div>
+                  </div>
+
+                </div>
               )}
-            </button>
-          </form>
 
-          {/* Bottom Link */}
-          <div className="mt-8 text-center text-xs text-zinc-400">
-            Sudah memiliki akun?{" "}
-            <Link
-              href="/"
-              className="font-semibold text-violet-400 hover:text-violet-300 transition-colors"
-            >
-              Masuk di sini
-            </Link>
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-4 w-full rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#5A77DF]/25 transition-all duration-300 cursor-pointer active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="h-4 w-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Membuat Akun...
+                  </span>
+                ) : (
+                  "Daftar Sekarang"
+                )}
+              </button>
+            </form>
+
+            {/* Bottom Link */}
+            <div className="mt-6 text-center text-xs text-zinc-600">
+              Sudah memiliki akun?{" "}
+              <Link
+                href="/"
+                className="font-semibold text-[#5A77DF] hover:text-[#3E53A2] transition-colors"
+              >
+                Masuk di sini
+              </Link>
+            </div>
+
           </div>
-
         </div>
+
+        {/* Right Section: 50% Full-Bleed Image Area */}
+        <div className="hidden lg:block w-full h-screen relative overflow-hidden bg-[#edf2fe]">
+          <img
+            src="/auth-illustration.jpg"
+            alt="Digimind Dashboard Illustration"
+            className="w-full h-full object-cover"
+          />
+        </div>
+
       </div>
     </div>
   );

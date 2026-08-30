@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
-import { verifyJWT } from "@/lib/auth-utils";
+import { verifyJWT, hashPassword } from "@/lib/auth-utils";
 
 function parseScreenTime(activities: string | null | undefined): number {
   if (!activities) return 0;
-
   const match = activities.match(/(\d+(?:[.,]\d+)?)\s*(jam|hour|hrs|h)/i);
   if (!match) return 0;
-
   const number = Number(match[1].replace(",", "."));
   return Number.isFinite(number) ? number : 0;
 }
@@ -26,26 +24,41 @@ export async function GET() {
       );
     }
 
-    const [modules, quizzes, users, journals, students, moduleCount, quizCount, userCount] = await Promise.all([
+    const [
+      modules,
+      quizzes,
+      users,
+      journals,
+      students,
+      categories,
+      levels,
+      classes,
+      subjects,
+      teachers,
+      quizAttempts
+    ] = await Promise.all([
       prisma.module.findMany({
-        include: { category: true, level: true },
+        where: { subject_id: { not: null } },
+        include: { category: true, level: true, subject: true },
         orderBy: { created_at: "desc" },
-        take: 20,
       }),
       prisma.quiz.findMany({
-        include: { module: true },
+        where: {
+          OR: [
+            { subject_id: { not: null } },
+            { module: { subject_id: { not: null } } }
+          ]
+        },
+        include: { module: true, questions: { include: { options: true } } },
         orderBy: { created_at: "desc" },
-        take: 20,
       }),
       prisma.user.findMany({
-        include: { admin: true, student: true, teacher: true },
+        include: { admin: true, student: { include: { class: true } }, teacher: true },
         orderBy: { created_at: "desc" },
-        take: 20,
       }),
       prisma.mentalJournal.findMany({
-        include: { student: true },
+        include: { student: { include: { class: true } } },
         orderBy: { logged_at: "desc" },
-        take: 20,
       }),
       prisma.siswa.findMany({
         include: {
@@ -55,9 +68,33 @@ export async function GET() {
         },
         orderBy: { created_at: "desc" },
       }),
-      prisma.module.count(),
-      prisma.quiz.count(),
-      prisma.user.count(),
+      prisma.category.findMany(),
+      prisma.level.findMany(),
+      prisma.schoolClass.findMany({
+        orderBy: { name: "asc" }
+      }),
+      prisma.subject.findMany({
+        include: { class: true, teacher: true },
+        orderBy: { name: "asc" }
+      }),
+      prisma.guru.findMany({
+        include: {
+          user: true,
+          class: true,
+          subjects: {
+            include: { class: true }
+          }
+        },
+        orderBy: { name: "asc" }
+      }),
+      prisma.quizAttempt.findMany({
+        include: {
+          student: { include: { class: true } },
+          quiz: { include: { module: true } },
+          answers: { include: { question: true, option: true } }
+        },
+        orderBy: { completed_at: "desc" }
+      })
     ]);
 
     const mentalHealthModules = await prisma.module.findMany({
@@ -69,11 +106,11 @@ export async function GET() {
 
     const progress = students.map((student) => {
       const recentJournals = student.mental_journals || [];
-      const latestJournal = recentJournals[0];
+      const textJournal = recentJournals[0];
       const averageMood = recentJournals.length > 0
         ? Math.round(recentJournals.reduce((sum, journal) => sum + journal.mood_score, 0) / recentJournals.length)
         : 3;
-      const screenTime = parseScreenTime(latestJournal?.activities ?? null);
+      const screenTime = parseScreenTime(textJournal?.activities ?? null);
       const completedMentalHealthModules = student.completed_modules.filter((completedModule) => mentalHealthModuleIds.has(completedModule.module_id)).length;
       const mentalHealthProgress = mentalHealthModules.length > 0
         ? Math.round((completedMentalHealthModules / mentalHealthModules.length) * 100)
@@ -91,49 +128,572 @@ export async function GET() {
     });
 
     const summary = {
-      modules: moduleCount,
-      quizzes: quizCount,
-      users: userCount,
+      modules: modules.length,
+      quizzes: quizzes.length,
+      users: users.length,
       journals: journals.length,
       atRisk: progress.filter((item) => item.risk !== "Stabil").length,
     };
 
+    const adminActors = users
+      .filter((u) => u.role === "admin")
+      .map((u) => {
+        let perms: string[] = [];
+        try {
+          if (u.admin?.permissions) {
+            perms = JSON.parse(u.admin.permissions);
+          } else {
+            perms = ["manage_users", "manage_teachers", "manage_academics", "manage_reports", "manage_roles"];
+          }
+        } catch {
+          perms = ["manage_users", "manage_teachers", "manage_academics", "manage_reports", "manage_roles"];
+        }
+
+        return {
+          id: u.id,
+          admin_id: u.admin?.id,
+          username: u.username,
+          email: u.email,
+          name: u.admin?.name || "Admin Sekolah",
+          division: u.admin?.division || "Administrasi",
+          unit: u.admin?.unit || "Utama",
+          permissions: perms,
+        };
+      });
+
     return NextResponse.json({
       success: true,
       summary,
+      adminActors,
       modules: modules.map((module) => ({
         id: module.id,
         title: module.title,
+        content: module.content || "",
+        video_url: module.video_url || "",
+        category_id: module.category_id,
+        level_id: module.level_id,
+        subject_id: module.subject_id,
         category: module.category?.name || "-",
         level: module.level?.name || "-",
-        status: module.created_at ? "Aktif" : "Draft",
+        subject: module.subject?.name || "-",
+        status: "Aktif",
       })),
       quizzes: quizzes.map((quiz) => ({
         id: quiz.id,
         title: quiz.title,
         type: quiz.type,
+        module_id: quiz.module_id,
         module: quiz.module?.title || "-",
+        questions: quiz.questions || [],
         status: "Aktif",
       })),
       users: users.map((user) => ({
         id: user.id,
         name: user.student?.name || user.teacher?.name || user.admin?.name || user.username,
         role: user.role,
+        username: user.username,
         email: user.email,
-        status: user.student || user.teacher || user.admin ? "Aktif" : "Pending",
+        status: "Aktif",
+        nis: user.student?.nis || "",
+        class_id: user.student?.class_id || "",
+        className: user.student?.class?.name || "",
+        nip: user.teacher?.nip || "",
+        teacher_type: user.teacher?.type || "subject",
+        specialization: user.teacher?.specialization || "",
+        position: user.teacher?.position || "",
       })),
       journals: journals.map((journal) => ({
         id: journal.id,
         student: journal.student?.name || "-",
+        className: journal.student?.class?.name || "-",
         mood: journal.mood_score,
-        note: journal.notes || journal.ai_feedback || "-",
+        note: journal.notes || "-",
+        ai_feedback: journal.ai_feedback || "-",
         date: journal.logged_at ? new Date(journal.logged_at).toLocaleDateString("id-ID") : "-",
       })),
       progress,
+      categories,
+      levels,
+      classes,
+      subjects,
+      teachers,
+      quizAttempts: quizAttempts.map(attempt => ({
+        id: attempt.id,
+        studentName: attempt.student?.name || "-",
+        className: attempt.student?.class?.name || "-",
+        quizTitle: attempt.quiz?.title || "-",
+        quizType: attempt.quiz?.type || "-",
+        score: attempt.score || 0,
+        completedAt: attempt.completed_at ? new Date(attempt.completed_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-",
+        answers: attempt.answers.map(ans => ({
+          question: ans.question?.question || "-",
+          selectedOption: ans.option?.option_text || "-",
+          isCorrect: !!ans.option?.is_correct
+        }))
+      })),
+      screeningAttempts: quizAttempts
+        .filter((a) => {
+          const titleLower = (a.quiz?.title || "").toLowerCase();
+          return (
+            a.quiz?.type === "pretest" &&
+            (!a.quiz?.subject_id || titleLower.includes("srq") || titleLower.includes("screening") || titleLower.includes("mental"))
+          );
+        })
+        .map((attempt) => ({
+          id: attempt.id,
+          studentName: attempt.student?.name || "-",
+          className: attempt.student?.class?.name || "-",
+          quizTitle: attempt.quiz?.title || "Self Reporting Questionnaire - 29 (SRQ-29)",
+          quizType: "SCREENING",
+          score: attempt.score || 0,
+          completedAt: attempt.completed_at
+            ? new Date(attempt.completed_at).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "-",
+          answers: attempt.answers.map((ans) => ({
+            question: ans.question?.question || "-",
+            selectedOption: ans.option?.option_text || "-",
+            isCorrect: !!ans.option?.is_correct,
+          })),
+        }))
     });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: "Terjadi kesalahan saat memuat dashboard admin.", error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("session_token")?.value;
+    const decoded = sessionToken ? verifyJWT(sessionToken) : null;
+
+    if (!decoded || decoded.role !== "admin") {
+      return NextResponse.json(
+        { success: false, message: "Akses ditolak." },
+        { status: 401 }
+      );
+    }
+
+    const { action, entity, data } = await request.json();
+
+    if (!action || !entity || !data) {
+      return NextResponse.json({ success: false, message: "Parameter tidak lengkap." }, { status: 400 });
+    }
+
+    // CRUD: MODULE
+    if (entity === "module") {
+      if (action === "create") {
+        const mod = await prisma.module.create({
+          data: {
+            title: data.title,
+            content: data.content,
+            video_url: data.video_url,
+            category_id: parseInt(data.category_id),
+            level_id: parseInt(data.level_id),
+            subject_id: data.subject_id ? parseInt(data.subject_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Modul berhasil ditambahkan!", module: mod });
+      }
+      if (action === "update") {
+        const mod = await prisma.module.update({
+          where: { id: parseInt(data.id) },
+          data: {
+            title: data.title,
+            content: data.content,
+            video_url: data.video_url,
+            category_id: parseInt(data.category_id),
+            level_id: parseInt(data.level_id),
+            subject_id: data.subject_id ? parseInt(data.subject_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Modul berhasil diperbarui!", module: mod });
+      }
+      if (action === "delete") {
+        await prisma.module.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "Modul berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: QUIZ
+    if (entity === "quiz") {
+      if (action === "create") {
+        const q = await prisma.quiz.create({
+          data: {
+            title: data.title,
+            type: data.type,
+            module_id: data.module_id ? parseInt(data.module_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Kuis berhasil ditambahkan!", quiz: q });
+      }
+      if (action === "update") {
+        const q = await prisma.quiz.update({
+          where: { id: parseInt(data.id) },
+          data: {
+            title: data.title,
+            type: data.type,
+            module_id: data.module_id ? parseInt(data.module_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Kuis berhasil diperbarui!", quiz: q });
+      }
+      if (action === "delete") {
+        await prisma.quiz.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "Kuis berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: QUIZ QUESTION
+    if (entity === "question") {
+      if (action === "create") {
+        const question = await prisma.question.create({
+          data: {
+            quiz_id: parseInt(data.quiz_id),
+            question: data.question,
+            options: {
+              create: data.options.map((opt: any) => ({
+                option_text: opt.option_text,
+                is_correct: opt.is_correct
+              }))
+            }
+          }
+        });
+        return NextResponse.json({ success: true, message: "Pertanyaan berhasil ditambahkan!", question });
+      }
+      if (action === "update") {
+        await prisma.option.deleteMany({ where: { question_id: parseInt(data.id) } });
+        const question = await prisma.question.update({
+          where: { id: parseInt(data.id) },
+          data: {
+            question: data.question,
+            options: {
+              create: data.options.map((opt: any) => ({
+                option_text: opt.option_text,
+                is_correct: opt.is_correct
+              }))
+            }
+          }
+        });
+        return NextResponse.json({ success: true, message: "Pertanyaan berhasil diperbarui!", question });
+      }
+      if (action === "delete") {
+        await prisma.question.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "Pertanyaan berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: USER
+    if (entity === "user") {
+      if (action === "create") {
+        const existingUsername = await prisma.user.findUnique({ where: { username: data.username } });
+        if (existingUsername) return NextResponse.json({ success: false, message: "Username sudah digunakan." }, { status: 400 });
+
+        const existingEmail = await prisma.user.findUnique({ where: { email: data.email } });
+        if (existingEmail) return NextResponse.json({ success: false, message: "Email sudah digunakan." }, { status: 400 });
+
+        const newUser = await prisma.$transaction(async (tx) => {
+          const user = await tx.user.create({
+            data: {
+              username: data.username,
+              email: data.email,
+              password: hashPassword(data.password),
+              role: data.role
+            }
+          });
+
+          if (data.role === "student") {
+            await tx.siswa.create({
+              data: {
+                user_id: user.id,
+                name: data.name,
+                nis: data.nis,
+                class_id: parseInt(data.class_id)
+              }
+            });
+          } else if (data.role === "teacher") {
+            await tx.guru.create({
+              data: {
+                user_id: user.id,
+                name: data.name,
+                nip: data.nip,
+                type: data.teacher_type,
+                specialization: data.specialization,
+                position: data.position
+              }
+            });
+          } else if (data.role === "admin") {
+            await tx.admin.create({
+              data: {
+                user_id: user.id,
+                name: data.name
+              }
+            });
+          }
+          return user;
+        });
+
+        return NextResponse.json({ success: true, message: "User berhasil dibuat!", user: newUser });
+      }
+
+      if (action === "update") {
+        await prisma.$transaction(async (tx) => {
+          const updateData: any = {
+            email: data.email,
+            username: data.username
+          };
+          if (data.password) {
+            updateData.password = hashPassword(data.password);
+          }
+
+          await tx.user.update({
+            where: { id: parseInt(data.id) },
+            data: updateData
+          });
+
+          if (data.role === "student") {
+            await tx.siswa.update({
+              where: { user_id: parseInt(data.id) },
+              data: {
+                name: data.name,
+                nis: data.nis,
+                class_id: parseInt(data.class_id)
+              }
+            });
+          } else if (data.role === "teacher") {
+            await tx.guru.update({
+              where: { user_id: parseInt(data.id) },
+              data: {
+                name: data.name,
+                nip: data.nip,
+                type: data.teacher_type,
+                specialization: data.specialization,
+                position: data.position
+              }
+            });
+          }
+        });
+
+        return NextResponse.json({ success: true, message: "User berhasil diperbarui!" });
+      }
+
+      if (action === "delete") {
+        await prisma.user.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "User berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: CLASS
+    if (entity === "class") {
+      if (action === "create") {
+        const cls = await prisma.schoolClass.create({
+          data: {
+            name: data.name,
+            major: data.major || "Umum"
+          }
+        });
+        return NextResponse.json({ success: true, message: "Kelas berhasil ditambahkan!", class: cls });
+      }
+      if (action === "update") {
+        const cls = await prisma.schoolClass.update({
+          where: { id: parseInt(data.id) },
+          data: {
+            name: data.name,
+            major: data.major
+          }
+        });
+        return NextResponse.json({ success: true, message: "Kelas berhasil diperbarui!", class: cls });
+      }
+      if (action === "delete") {
+        await prisma.schoolClass.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "Kelas berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: SUBJECT
+    if (entity === "subject") {
+      if (action === "create") {
+        const sub = await prisma.subject.create({
+          data: {
+            name: data.name,
+            class_id: parseInt(data.class_id),
+            teacher_id: data.teacher_id ? parseInt(data.teacher_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Mata pelajaran berhasil ditambahkan!", subject: sub });
+      }
+      if (action === "update") {
+        const sub = await prisma.subject.update({
+          where: { id: parseInt(data.id) },
+          data: {
+            name: data.name,
+            class_id: parseInt(data.class_id),
+            teacher_id: data.teacher_id ? parseInt(data.teacher_id) : null
+          }
+        });
+        return NextResponse.json({ success: true, message: "Mata pelajaran berhasil diperbarui!", subject: sub });
+      }
+      if (action === "delete") {
+        await prisma.subject.delete({ where: { id: parseInt(data.id) } });
+        return NextResponse.json({ success: true, message: "Mata pelajaran berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: TEACHER (Guru & Multi-Subject/Class Assignment)
+    if (entity === "teacher") {
+      if (action === "update" || action === "assign_subjects") {
+        await prisma.$transaction(async (tx) => {
+          const guruId = parseInt(data.id);
+
+          // 1. Update Guru profile
+          await tx.guru.update({
+            where: { id: guruId },
+            data: {
+              name: data.name,
+              nip: data.nip || "",
+              phone_number: data.phone_number || "",
+              type: data.type || "subject",
+              specialization: data.specialization || "",
+              position: data.position || "",
+              class_id: data.class_id ? parseInt(data.class_id) : null,
+            }
+          });
+
+          // 2. Update multi-subject assignment if subject_ids array provided
+          if (Array.isArray(data.subject_ids)) {
+            const targetSubjectIds = data.subject_ids.map((id: any) => parseInt(id)).filter(Boolean);
+
+            // Unassign current subjects for this teacher
+            await tx.subject.updateMany({
+              where: { teacher_id: guruId },
+              data: { teacher_id: null }
+            });
+
+            // Assign new subjects
+            if (targetSubjectIds.length > 0) {
+              await tx.subject.updateMany({
+                where: { id: { in: targetSubjectIds } },
+                data: { teacher_id: guruId }
+              });
+            }
+          }
+        });
+
+        return NextResponse.json({ success: true, message: "Data & pengampuan Guru berhasil diperbarui!" });
+      }
+    }
+
+    // CRUD: ADMIN ACTOR & PERMISSIONS (RBAC)
+    if (entity === "admin_actor") {
+      if (action === "create") {
+        const existing = await prisma.user.findFirst({
+          where: {
+            OR: [{ username: data.username }, { email: data.email }]
+          }
+        });
+        if (existing) {
+          return NextResponse.json({ success: false, message: "Username atau Email sudah terdaftar." }, { status: 400 });
+        }
+
+        const permsJson = JSON.stringify(Array.isArray(data.permissions) ? data.permissions : []);
+
+        const newUser = await prisma.$transaction(async (tx) => {
+          const user = await tx.user.create({
+            data: {
+              username: data.username,
+              email: data.email,
+              password: hashPassword(data.password || "admin123"),
+              role: "admin"
+            }
+          });
+
+          await tx.admin.create({
+            data: {
+              user_id: user.id,
+              name: data.name,
+              division: data.division || "Administrasi Sekolah",
+              unit: data.unit || "Utama",
+              permissions: permsJson
+            }
+          });
+
+          return user;
+        });
+
+        return NextResponse.json({ success: true, message: "Aktor Admin baru & Hak Akses berhasil dibuat!", user: newUser });
+      }
+
+      if (action === "update") {
+        const userId = parseInt(data.id);
+        const permsJson = JSON.stringify(Array.isArray(data.permissions) ? data.permissions : []);
+
+        await prisma.$transaction(async (tx) => {
+          const updateUserData: any = {
+            username: data.username,
+            email: data.email
+          };
+          if (data.password && data.password.trim() !== "") {
+            updateUserData.password = hashPassword(data.password.trim());
+          }
+
+          await tx.user.update({
+            where: { id: userId },
+            data: updateUserData
+          });
+
+          const adminProfile = await tx.admin.findUnique({ where: { user_id: userId } });
+          if (adminProfile) {
+            await tx.admin.update({
+              where: { user_id: userId },
+              data: {
+                name: data.name,
+                division: data.division,
+                unit: data.unit,
+                permissions: permsJson
+              }
+            });
+          } else {
+            await tx.admin.create({
+              data: {
+                user_id: userId,
+                name: data.name,
+                division: data.division,
+                unit: data.unit,
+                permissions: permsJson
+              }
+            });
+          }
+        });
+
+        return NextResponse.json({ success: true, message: "Aktor Admin & Hak Akses berhasil diperbarui!" });
+      }
+
+      if (action === "delete") {
+        const userId = parseInt(data.id);
+        const userCount = await prisma.user.count({ where: { role: "admin" } });
+        if (userCount <= 1) {
+          return NextResponse.json({ success: false, message: "Tidak dapat menghapus Superadmin terakhir!" }, { status: 400 });
+        }
+
+        await prisma.user.delete({ where: { id: userId } });
+        return NextResponse.json({ success: true, message: "Aktor Admin berhasil dihapus!" });
+      }
+    }
+
+    return NextResponse.json({ success: false, message: "Entitas atau aksi tidak valid." }, { status: 400 });
+
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Gagal memproses permintaan CRUD admin.", error: error.message },
       { status: 500 }
     );
   }
