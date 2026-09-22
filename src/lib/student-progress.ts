@@ -48,14 +48,24 @@ export async function calculateStudentModuleProgress(
     const pretestQuiz = sub.quizzes[0] || null;
     const hasCompletedPretest = !!subjectLevelRecord || (pretestQuiz ? studentAttempts.some(a => a.quiz_id === pretestQuiz.id && !!a.completed_at) : false);
 
-    if (hasCompletedPretest || !pretestQuiz) {
-      const currentLevel = subjectLevelRecord?.level_name || "Beginner";
-      let subMods = sub.modules.filter(m => !m.level || m.level.name === currentLevel);
-      if (subMods.length === 0) {
-        subMods = sub.modules;
-      }
-      subMods.forEach(m => accessibleModuleIds.add(m.id));
+    const currentLevel = subjectLevelRecord?.level_name || "Beginner";
+    const targetLevelStr = currentLevel.trim().toLowerCase();
+
+    let subMods = sub.modules.filter(m => {
+      if (!m.level || !m.level.name) return true;
+      const modLevelStr = m.level.name.trim().toLowerCase();
+      return modLevelStr === targetLevelStr ||
+        (targetLevelStr.startsWith("advan") && modLevelStr.startsWith("advan")) ||
+        (targetLevelStr.startsWith("intermed") && modLevelStr.startsWith("intermed")) ||
+        (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("basic")) ||
+        (targetLevelStr.startsWith("beginner") && modLevelStr.startsWith("basic")) ||
+        (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("beginner"));
+    });
+
+    if (subMods.length === 0) {
+      subMods = sub.modules;
     }
+    subMods.forEach(m => accessibleModuleIds.add(m.id));
   }
 
   const totalAccessible = accessibleModuleIds.size;

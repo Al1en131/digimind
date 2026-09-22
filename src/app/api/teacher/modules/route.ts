@@ -146,6 +146,10 @@ export async function POST(request: Request) {
       where: { name: targetLevelName },
     });
     if (!level) {
+      const allLevels = await prisma.level.findMany();
+      level = allLevels.find(l => l.name.trim().toLowerCase() === targetLevelName.toLowerCase()) || null;
+    }
+    if (!level) {
       level = await prisma.level.create({
         data: { name: targetLevelName },
       });
@@ -239,6 +243,10 @@ export async function PUT(request: Request) {
     let level = await prisma.level.findFirst({
       where: { name: targetLevelName },
     });
+    if (!level) {
+      const allLevels = await prisma.level.findMany();
+      level = allLevels.find(l => l.name.trim().toLowerCase() === targetLevelName.toLowerCase()) || null;
+    }
     if (!level) {
       level = await prisma.level.create({
         data: { name: targetLevelName },

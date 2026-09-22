@@ -31,14 +31,16 @@ import {
   EyeOff,
   Lock,
   Bell,
-  Settings
+  Settings,
+  Menu
 } from "lucide-react";
 
-type DashboardTab = "overview" | "users" | "teachers" | "actors" | "classes" | "subjects" | "modules" | "quizzes" | "attempts" | "screening";
+type DashboardTab = "overview" | "users" | "teachers" | "actors" | "classes" | "subjects" | "modules" | "quizzes" | "pretest_screening" | "attempts" | "screening";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -153,6 +155,7 @@ export default function AdminDashboardPage() {
   const [actorUsername, setActorUsername] = useState("");
   const [actorEmail, setActorEmail] = useState("");
   const [actorPassword, setActorPassword] = useState("");
+  const [showActorPassword, setShowActorPassword] = useState(false);
   const [actorDivision, setActorDivision] = useState("");
   const [actorUnit, setActorUnit] = useState("");
   const [actorPermissions, setActorPermissions] = useState<string[]>([]);
@@ -169,18 +172,24 @@ export default function AdminDashboardPage() {
   const [uUsername, setUUsername] = useState("");
   const [uEmail, setUEmail] = useState("");
   const [uPassword, setUPassword] = useState("");
+  const [showUPassword, setShowUPassword] = useState(false);
   const [uRole, setURole] = useState("student");
   const [uName, setUName] = useState("");
   const [uNis, setUNis] = useState("");
   const [uClassId, setUClassId] = useState("");
   const [uNip, setUNip] = useState("");
+  const [uPhoneNumber, setUPhoneNumber] = useState("");
   const [uTeacherType, setUTeacherType] = useState("subject");
+  const [uSubjectId, setUSubjectId] = useState("");
   const [uSpecialization, setUSpecialization] = useState("");
   const [uPosition, setUPosition] = useState("");
+  const [uDivision, setUDivision] = useState("");
+  const [uUnit, setUUnit] = useState("");
 
   // Class Form
   const [cName, setCName] = useState("");
   const [cMajor, setCMajor] = useState("");
+  const [cAcademicYear, setCAcademicYear] = useState("2025/2026");
 
   // Subject Form
   const [sName, setSName] = useState("");
@@ -274,25 +283,33 @@ export default function AdminDashboardPage() {
     setUNis("");
     setUClassId(classes[0]?.id?.toString() || "");
     setUNip("");
+    setUPhoneNumber("");
     setUTeacherType("subject");
+    setUSubjectId("");
     setUSpecialization("");
     setUPosition("");
+    setUDivision("");
+    setUUnit("");
     setShowUserModal(true);
   };
 
   const handleOpenUserEdit = (user: any) => {
     setSelectedUser(user);
-    setUUsername(user.username);
-    setUEmail(user.email);
+    setUUsername(user.username || "");
+    setUEmail(user.email || "");
     setUPassword("");
-    setURole(user.role);
-    setUName(user.name);
+    setURole(user.role || "student");
+    setUName(user.name || "");
     setUNis(user.nis || "");
     setUClassId(user.class_id?.toString() || "");
     setUNip(user.nip || "");
+    setUPhoneNumber(user.phone_number || "");
     setUTeacherType(user.teacher_type || "subject");
+    setUSubjectId(user.subject_id?.toString() || "");
     setUSpecialization(user.specialization || "");
     setUPosition(user.position || "");
+    setUDivision(user.division || "");
+    setUUnit(user.unit || "");
     setShowUserModal(true);
   };
 
@@ -309,11 +326,15 @@ export default function AdminDashboardPage() {
         role: uRole,
         name: uName,
         nis: uRole === "student" ? uNis : undefined,
-        class_id: uRole === "student" ? uClassId : undefined,
+        class_id: (uRole === "student" || uRole === "teacher") ? uClassId : undefined,
         nip: uRole === "teacher" ? uNip : undefined,
+        phone_number: uRole === "teacher" ? uPhoneNumber : undefined,
         teacher_type: uRole === "teacher" ? uTeacherType : undefined,
+        subject_id: uRole === "teacher" && uTeacherType === "subject" ? uSubjectId : undefined,
         specialization: uRole === "teacher" ? uSpecialization : undefined,
         position: uRole === "teacher" ? uPosition : undefined,
+        division: uRole === "admin" ? uDivision : undefined,
+        unit: uRole === "admin" ? uUnit : undefined,
       }
     };
 
@@ -361,6 +382,7 @@ export default function AdminDashboardPage() {
     setSelectedClass(null);
     setCName("");
     setCMajor("");
+    setCAcademicYear("2025/2026");
     setShowClassModal(true);
   };
 
@@ -368,6 +390,7 @@ export default function AdminDashboardPage() {
     setSelectedClass(cls);
     setCName(cls.name);
     setCMajor(cls.major || "");
+    setCAcademicYear(cls.academic_year || cls.year || "2025/2026");
     setShowClassModal(true);
   };
 
@@ -379,7 +402,8 @@ export default function AdminDashboardPage() {
       data: {
         id: selectedClass?.id,
         name: cName,
-        major: cMajor
+        major: cMajor,
+        academic_year: cAcademicYear
       }
     };
     try {
@@ -485,6 +509,21 @@ export default function AdminDashboardPage() {
   };
 
   // ADMIN ACTOR & PERMISSIONS CRUD
+  const ALL_ADMIN_PERMISSIONS = [
+    { key: "manage_users", label: "Manajemen Akun & Siswa", desc: "Akses ke tab Manajemen Akun (kelola akun siswa, NIS, registrasi, & password)." },
+    { key: "manage_teachers", label: "Pengampuan & Jabatan Guru", desc: "Akses ke tab Pengampuan Guru (kelola NIP, jenis guru wali kelas/BK, alokasi mapel)." },
+    { key: "manage_roles", label: "Aktor Admin & Hak Akses", desc: "Hak Superadmin untuk membuat akun aktor admin baru dan mengatur matriks perizinan." },
+    { key: "manage_classes", label: "Data Kelas & Tahun Ajaran", desc: "Akses ke tab Data Kelas (kelola daftar kelas, jurusan, dan Tahun Ajaran/TA)." },
+    { key: "manage_subjects", label: "Mata Pelajaran Sekolah", desc: "Akses ke tab Mata Pelajaran (tambah, edit, & alokasikan mapel ke guru)." },
+    { key: "manage_modules", label: "Modul Pembelajaran", desc: "Akses ke tab Modul Pembelajaran (kelola isi konten modul, video youtube, kategori)." },
+    { key: "manage_quizzes", label: "Kuis & Bank Soal Evaluation", desc: "Akses ke tab Kuis & Soal (kelola kuis evaluasi modul & pretest penempatan level)." },
+    { key: "manage_pretest_screening", label: "Pretest Screening Mental (SRQ-29)", desc: "Akses ke tab Pretest Screening Mental (pengaturan kuesioner awal SRQ-29)." },
+    { key: "manage_attempts", label: "Hasil Kuis Siswa", desc: "Akses ke tab Hasil Kuis Siswa (melihat rekapitulasi & detail lembar jawaban kuis)." },
+    { key: "manage_screening", label: "Hasil Screening SRQ-29 Siswa", desc: "Akses ke tab Hasil Screening SRQ-29 (melihat rekap riwayat screening mental bulanan)." },
+    { key: "manage_academics", label: "Manajemen Akademik (Gabungan)", desc: "Izin menyeluruh mencakup Kelas, Mapel, Modul Pembelajaran, dan Kuis." },
+    { key: "manage_reports", label: "Laporan & Rekapitulasi (Gabungan)", desc: "Izin menyeluruh mencakup Hasil Kuis dan Hasil Screening SRQ-29." },
+  ];
+
   const handleOpenActorCreate = () => {
     setSelectedActor(null);
     setActorName("");
@@ -493,7 +532,7 @@ export default function AdminDashboardPage() {
     setActorPassword("");
     setActorDivision("Kurikulum & Akademik");
     setActorUnit("Sekolah Utama");
-    setActorPermissions(["manage_users", "manage_teachers", "manage_academics"]);
+    setActorPermissions(ALL_ADMIN_PERMISSIONS.map((p) => p.key));
     setShowActorModal(true);
   };
 
@@ -597,7 +636,7 @@ export default function AdminDashboardPage() {
         id: selectedSubject?.id,
         name: sName,
         class_id: sClassId,
-        teacher_id: sTeacherId || null
+        teacher_id: (sTeacherId && sTeacherId !== "" && sTeacherId !== "null") ? parseInt(sTeacherId) : null
       }
     };
     try {
@@ -1152,38 +1191,46 @@ export default function AdminDashboardPage() {
         )}
 
         {/* HEADER PANEL */}
-        <header className="sticky top-0 z-50 rounded-2xl border border-zinc-200/80 bg-white/90 backdrop-blur-md p-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="DigiMind" className="h-14 sm:h-16 w-auto object-contain" />
+        <header className="sticky top-0 z-50 rounded-2xl border border-zinc-200/80 bg-white/90 backdrop-blur-md p-3.5 sm:p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 transition cursor-pointer"
+                title="Buka Menu Navigasi"
+              >
+                <Menu className="w-5 h-5 text-zinc-700" />
+              </button>
+              <img src="/logo.png" alt="DigiMind" className="h-10 sm:h-14 lg:h-16 w-auto object-contain" />
               <div>
-                <p className="text-3xs font-extrabold uppercase tracking-[0.35em] text-[#5A77DF]">
+                <p className="text-3xs font-extrabold uppercase tracking-[0.2em] sm:tracking-[0.35em] text-[#5A77DF]">
                   Portal Admin
                 </p>
-                <h1 className="text-lg font-black text-[#2e384d] tracking-tight">
+                <h1 className="text-xs sm:text-base lg:text-lg font-black text-[#2e384d] tracking-tight">
                   Panel Manajemen & Kontrol Utama
                 </h1>
               </div>
             </div>
             
-            <div className="flex items-center gap-4 sm:gap-6">
+            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
               {/* Profile Card matching reference image - Clickable to open Change Password Modal */}
               <button
                 type="button"
                 onClick={() => setShowAdminPassModal(true)}
-                className="flex items-center gap-3 text-left hover:opacity-90 transition cursor-pointer group"
+                className="flex items-center gap-2 text-left hover:opacity-90 transition cursor-pointer group"
                 title="Klik untuk Ganti Password Admin"
               >
-                <div className="relative h-10 w-10 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
-                  <div className="h-full w-full rounded-full bg-gradient-to-br from-[#5A77DF] to-[#3E53A2] text-white font-extrabold flex items-center justify-center text-sm shadow-inner">
+                <div className="relative h-9 w-9 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
+                  <div className="h-full w-full rounded-full bg-gradient-to-br from-[#5A77DF] to-[#3E53A2] text-white font-extrabold flex items-center justify-center text-xs sm:text-sm shadow-inner">
                     A
                   </div>
                 </div>
-                <div className="hidden sm:block">
-                  <h4 className="text-sm font-extrabold text-zinc-900 leading-tight group-hover:text-[#5A77DF] transition-colors">
+                <div className="hidden md:block">
+                  <h4 className="text-xs sm:text-sm font-extrabold text-zinc-900 leading-tight group-hover:text-[#5A77DF] transition-colors">
                     Admin DigiMind
                   </h4>
-                  <p className="text-xs font-semibold text-zinc-400 leading-tight">
+                  <p className="text-3xs sm:text-xs font-semibold text-zinc-400 leading-tight">
                     Administrator (Ganti Password)
                   </p>
                 </div>
@@ -1193,23 +1240,96 @@ export default function AdminDashboardPage() {
                 <button
                   type="button"
                   onClick={loadData}
-                  className="relative p-2.5 rounded-full text-zinc-900 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center"
+                  className="relative p-2 sm:p-2.5 rounded-full text-zinc-900 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center"
                   title="Refresh Data & Notifikasi"
                 >
-                  <Bell className="w-5 h-5 text-zinc-900 fill-zinc-900" />
-                  <span className="absolute top-2 right-2 h-2.5 w-2.5 rounded-full bg-rose-500 border-2 border-white shadow-xs" />
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-900 fill-zinc-900" />
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-500 border-2 border-white shadow-xs" />
                 </button>
               </div>
 
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-xl bg-red-50 hover:bg-red-100/80 text-red-600 border border-red-200/45 px-3.5 py-2 text-2xs font-bold transition cursor-pointer"
+                className="flex items-center gap-1.5 rounded-xl bg-red-50 hover:bg-red-100/80 text-red-600 border border-red-200/45 px-2.5 sm:px-3.5 py-2 text-3xs sm:text-2xs font-bold transition cursor-pointer"
               >
-                <LogOut className="w-3.5 h-3.5" /> Keluar
+                <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Keluar</span>
               </button>
             </div>
           </div>
         </header>
+
+        {/* MOBILE DRAWER OVERLAY */}
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm lg:hidden animate-fadeIn">
+            <div className="w-4/5 max-w-xs h-full bg-[#5A77DF] p-5 text-white flex flex-col justify-between shadow-2xl overflow-y-auto">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/20 pb-3">
+                  <div className="flex items-center gap-2">
+                    <img src="/logo.png" alt="DigiMind" className="h-8 w-auto bg-white rounded-lg p-1" />
+                    <span className="text-xs font-black uppercase tracking-wider">Navigasi Admin</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="text-white/80 hover:text-white text-lg font-bold p-1 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <nav className="space-y-1">
+                  {[
+                    { id: "overview", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
+                    { id: "users", label: "Manajemen Akun", icon: <Users className="w-4 h-4" /> },
+                    { id: "teachers", label: "Pengampuan Guru", icon: <GraduationCap className="w-4 h-4" /> },
+                    { id: "actors", label: "Aktor Admin & Izin", icon: <ShieldCheck className="w-4 h-4" /> },
+                    { id: "classes", label: "Data Kelas", icon: <School className="w-4 h-4" /> },
+                    { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
+                    { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
+                    { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
+                    { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
+                    { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
+                    { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
+                  ].map((item) => {
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id as DashboardTab);
+                          setIsMobileMenuOpen(false);
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
+                          isActive
+                            ? "border-white bg-white text-[#3E53A2] shadow-md"
+                            : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
+                        }`}
+                      >
+                        <span className="shrink-0">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+
+              <div className="pt-4 border-t border-white/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleLogout();
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/20 hover:bg-white/30 py-2.5 text-xs font-bold text-white transition cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" /> Keluar
+                </button>
+              </div>
+            </div>
+            <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />
+          </div>
+        )}
 
         {/* MAIN LAYOUT */}
         <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -1223,7 +1343,7 @@ export default function AdminDashboardPage() {
 
               <nav className="space-y-1">
                 {[
-                  { id: "overview", label: "Ringkasan Sistem", icon: <LayoutDashboard className="w-4 h-4" /> },
+                  { id: "overview", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
                   { id: "users", label: "Manajemen Akun", icon: <Users className="w-4 h-4" /> },
                   { id: "teachers", label: "Pengampuan Guru", icon: <GraduationCap className="w-4 h-4" /> },
                   { id: "actors", label: "Aktor Admin & Izin", icon: <ShieldCheck className="w-4 h-4" /> },
@@ -1231,8 +1351,9 @@ export default function AdminDashboardPage() {
                   { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
                   { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
                   { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
+                  { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
                   { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
-                  { id: "screening", label: "Hasil Screening SRQ-29", icon: <Brain className="w-4 h-4" /> },
+                  { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
                 ].map((item) => {
                   const isActive = activeTab === item.id;
                   return (
@@ -1266,8 +1387,9 @@ export default function AdminDashboardPage() {
               { id: "subjects", label: "Mapel", icon: <BookOpen className="w-3.5 h-3.5" /> },
               { id: "modules", label: "Modul", icon: <FileCode className="w-3.5 h-3.5" /> },
               { id: "quizzes", label: "Kuis", icon: <HelpCircle className="w-3.5 h-3.5" /> },
+              { id: "pretest_screening", label: "Pretest Mental", icon: <Brain className="w-3.5 h-3.5" /> },
               { id: "attempts", label: "Hasil Kuis", icon: <Target className="w-3.5 h-3.5" /> },
-              { id: "screening", label: "Screening", icon: <Brain className="w-3.5 h-3.5" /> },
+              { id: "screening", label: "Hasil SRQ-29", icon: <FileText className="w-3.5 h-3.5" /> },
             ].map((item) => {
               const isActive = activeTab === item.id;
               return (
@@ -1347,15 +1469,15 @@ export default function AdminDashboardPage() {
 
                 {/* 2. USERS MANAGEMENT VIEW */}
                 {activeTab === "users" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Pengguna</h3>
                         <p className="text-3xs text-zinc-400">Daftar lengkap akun administrator, guru mapel, guru BK, dan siswa aktif.</p>
                       </div>
                       <button
                         onClick={handleOpenUserCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-extrabold text-white transition-all cursor-pointer shadow-sm shadow-[#5A77DF]/10"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-extrabold text-white transition-all cursor-pointer shadow-sm shadow-[#5A77DF]/10 shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Pengguna</span>
@@ -1365,7 +1487,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Nama</th>
@@ -1418,15 +1540,15 @@ export default function AdminDashboardPage() {
 
                 {/* 2.7 ACTORS & HAK AKSES VIEW */}
                 {activeTab === "actors" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Aktor Admin & Hak Akses (RBAC)</h3>
                         <p className="text-3xs text-zinc-400">Atur akun administrator sekolah, pembagian divisi/unit, serta penentuan batas hak akses per modul secara terperinci.</p>
                       </div>
                       <button
                         onClick={handleOpenActorCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-extrabold text-white transition-all cursor-pointer shadow-sm"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-extrabold text-white transition-all cursor-pointer shadow-sm shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Aktor Admin</span>
@@ -1436,7 +1558,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Nama Aktor Admin</th>
@@ -1463,10 +1585,10 @@ export default function AdminDashboardPage() {
                                   <div className="text-3xs text-zinc-400">{actor.unit || "Utama"}</div>
                                 </td>
                                 <td className="px-4 py-3.5">
-                                  <div className="flex flex-wrap gap-1 max-w-xs">
+                                  <div className="flex flex-wrap gap-1 max-w-sm">
                                     {permsList.includes("manage_users") && (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-3xs font-extrabold text-blue-700 border border-blue-200">
-                                        <Users className="w-3 h-3" /> User
+                                        <Users className="w-3 h-3" /> Akun
                                       </span>
                                     )}
                                     {permsList.includes("manage_teachers") && (
@@ -1474,19 +1596,54 @@ export default function AdminDashboardPage() {
                                         <GraduationCap className="w-3 h-3" /> Guru
                                       </span>
                                     )}
-                                    {permsList.includes("manage_academics") && (
-                                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-3xs font-extrabold text-emerald-700 border border-emerald-200">
-                                        <BookOpen className="w-3 h-3" /> Akademik
-                                      </span>
-                                    )}
-                                    {permsList.includes("manage_reports") && (
-                                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-3xs font-extrabold text-amber-700 border border-amber-200">
-                                        <FileText className="w-3 h-3" /> Laporan
-                                      </span>
-                                    )}
                                     {permsList.includes("manage_roles") && (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-3xs font-extrabold text-purple-700 border border-purple-200">
                                         <Key className="w-3 h-3" /> Hak Akses
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_classes") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-[#5A77DF]/10 px-2 py-0.5 text-3xs font-extrabold text-[#3E53A2] border border-[#5A77DF]/30">
+                                        <School className="w-3 h-3" /> Kelas
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_subjects") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2 py-0.5 text-3xs font-extrabold text-cyan-700 border border-cyan-200">
+                                        <BookOpen className="w-3 h-3" /> Mapel
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_modules") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-3xs font-extrabold text-emerald-700 border border-emerald-200">
+                                        <FileCode className="w-3 h-3" /> Modul
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_quizzes") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-3xs font-extrabold text-amber-700 border border-amber-200">
+                                        <HelpCircle className="w-3 h-3" /> Kuis
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_pretest_screening") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-3xs font-extrabold text-violet-700 border border-violet-200">
+                                        <Brain className="w-3 h-3" /> Pretest SRQ
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_attempts") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-3xs font-extrabold text-teal-700 border border-teal-200">
+                                        <Target className="w-3 h-3" /> Hasil Kuis
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_screening") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-3xs font-extrabold text-rose-700 border border-rose-200">
+                                        <FileText className="w-3 h-3" /> Hasil SRQ-29
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_academics") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-3xs font-extrabold text-slate-700 border border-slate-300">
+                                        Akademik
+                                      </span>
+                                    )}
+                                    {permsList.includes("manage_reports") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-3xs font-extrabold text-slate-700 border border-slate-300">
+                                        Laporan
                                       </span>
                                     )}
                                   </div>
@@ -1518,8 +1675,8 @@ export default function AdminDashboardPage() {
 
                 {/* 2.5 TEACHERS VIEW */}
                 {activeTab === "teachers" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Guru & Pengampuan Mengajar</h3>
                         <p className="text-3xs text-zinc-400">Atur profil guru, kategori jabatan (Wali Kelas / BK / Mapel), serta alokasi pengampuan ke banyak mata pelajaran dan banyak kelas sekaligus.</p>
@@ -1529,7 +1686,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Guru & NIP</th>
@@ -1616,15 +1773,15 @@ export default function AdminDashboardPage() {
 
                 {/* 3. CLASSES VIEW */}
                 {activeTab === "classes" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Kelas</h3>
                         <p className="text-3xs text-zinc-400">Kelola daftar kelas aktif sekolah.</p>
                       </div>
                       <button
                         onClick={handleOpenClassCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Kelas</span>
@@ -1634,12 +1791,13 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">ID Kelas</th>
                             <th className="px-4 py-3">Nama Kelas</th>
                             <th className="px-4 py-3">Jurusan / Major</th>
+                            <th className="px-4 py-3">Tahun Ajaran</th>
                             <th className="px-4 py-3 text-right">Aksi</th>
                           </tr>
                         </thead>
@@ -1649,6 +1807,7 @@ export default function AdminDashboardPage() {
                               <td className="px-4 py-3.5 font-bold text-zinc-500">#{cls.id}</td>
                               <td className="px-4 py-3.5 font-bold text-zinc-800">{cls.name}</td>
                               <td className="px-4 py-3.5 text-zinc-600">{cls.major || "Umum"}</td>
+                              <td className="px-4 py-3.5 text-zinc-600 font-semibold">{cls.academic_year || cls.year || "2025/2026"}</td>
                               <td className="px-4 py-3.5 text-right flex justify-end gap-1.5">
                                 <button
                                   type="button"
@@ -1677,15 +1836,15 @@ export default function AdminDashboardPage() {
 
                 {/* 4. SUBJECTS VIEW */}
                 {activeTab === "subjects" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Mata Pelajaran</h3>
                         <p className="text-3xs text-zinc-400">Atur program mata pelajaran dan tautkan guru pengampu beserta kelasnya.</p>
                       </div>
                       <button
                         onClick={handleOpenSubjectCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Mata Pelajaran</span>
@@ -1695,7 +1854,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Mata Pelajaran</th>
@@ -1747,15 +1906,15 @@ export default function AdminDashboardPage() {
 
                 {/* 5. MODULES VIEW */}
                 {activeTab === "modules" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Modul Belajar</h3>
                         <p className="text-3xs text-zinc-400">Atur modul literasi digital, kesehatan mental, atau modul mapel spesifik.</p>
                       </div>
                       <button
                         onClick={handleOpenModuleCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Modul</span>
@@ -1765,7 +1924,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Judul Modul</th>
@@ -1810,15 +1969,15 @@ export default function AdminDashboardPage() {
 
                 {/* 6. QUIZZES VIEW */}
                 {activeTab === "quizzes" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
                       <div>
                         <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Kuis</h3>
                         <p className="text-3xs text-zinc-400">Atur kuis pretest adaptif serta kuis posttest untuk setiap modul aktif.</p>
                       </div>
                       <button
                         onClick={handleOpenQuizCreate}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm shrink-0"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Tambah Kuis</span>
@@ -1828,7 +1987,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Nama Kuis</th>
@@ -1881,9 +2040,163 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
+                {/* 6.5 PRETEST SCREENING MENTAL HEALTH (SRQ-29) VIEW */}
+                {activeTab === "pretest_screening" && (() => {
+                  const srqQuiz = quizzes.find((q) => q.type === "pretest" && (!q.module_id || q.title?.toLowerCase().includes("srq") || q.title?.toLowerCase().includes("screening")));
+                  const questionsList = srqQuiz?.questions || [];
+                  const filteredQuestions = searchQuery
+                    ? questionsList.filter((q: any) => q.question?.toLowerCase().includes(searchQuery.toLowerCase()))
+                    : questionsList;
+
+                  return (
+                    <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-100 pb-4 gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Brain className="w-5 h-5 text-[#5A77DF]" />
+                            <h3 className="text-base font-extrabold text-zinc-800">
+                              Pretest Screening Mental Health (SRQ-29)
+                            </h3>
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-3xs font-extrabold text-emerald-700 border border-emerald-200">
+                              Aktif (Mandatori Siswa)
+                            </span>
+                          </div>
+                          <p className="text-2xs text-zinc-500">
+                            Kuis kuesioner kesehatan mental (SRQ-29) yang wajib diisi oleh setiap siswa baru untuk evaluasi awal.
+                          </p>
+                        </div>
+                        {srqQuiz && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveQuizForQuestions(srqQuiz);
+                                handleOpenQuestionCreate();
+                              }}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition cursor-pointer shadow-sm shrink-0"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Tambah Soal SRQ</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* STATS HIGHLIGHT */}
+                      {srqQuiz ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl bg-[#f5f7fc] border border-[#5A77DF]/15">
+                          <div>
+                            <p className="text-3xs uppercase font-extrabold tracking-wider text-zinc-400">Judul Kuis</p>
+                            <p className="text-xs font-extrabold text-zinc-800 truncate">{srqQuiz.title}</p>
+                          </div>
+                          <div>
+                            <p className="text-3xs uppercase font-extrabold tracking-wider text-zinc-400">Total Soal</p>
+                            <p className="text-xs font-extrabold text-[#5A77DF]">{questionsList.length} Pertanyaan</p>
+                          </div>
+                          <div>
+                            <p className="text-3xs uppercase font-extrabold tracking-wider text-zinc-400">Tipe & Status</p>
+                            <p className="text-xs font-extrabold text-emerald-600">Pretest Initial (Aktif)</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <span>Kuis Screening Pretest SRQ-29 belum ditemukan di database.</span>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/auth/seed");
+                                const d = await res.json();
+                                triggerMessage(d.message || "Berhasil mereset kuis SRQ-29!", "success");
+                                window.location.reload();
+                              } catch {
+                                triggerMessage("Gagal mereset kuis SRQ-29.", "error");
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-amber-600 text-white font-bold text-2xs hover:bg-amber-700 transition cursor-pointer"
+                          >
+                            Generate / Reset SRQ-29
+                          </button>
+                        </div>
+                      )}
+
+                      {renderSearchFilterBar()}
+
+                      {/* QUESTIONS TABLE */}
+                      <div className="overflow-x-auto rounded-xl border border-zinc-150">
+                        <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
+                          <thead className="bg-[#f5f7fc]">
+                            <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                              <th className="px-4 py-3 w-12 text-center">No</th>
+                              <th className="px-4 py-3">Pertanyaan Screening</th>
+                              <th className="px-4 py-3">Opsi Jawaban</th>
+                              <th className="px-4 py-3 text-right w-24">Aksi</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 bg-white">
+                            {filteredQuestions.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-xs text-zinc-400 italic">
+                                  Belum ada pertanyaan screening ditemukan.
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredQuestions.map((q: any, idx: number) => (
+                                <tr key={q.id || idx} className="hover:bg-zinc-50">
+                                  <td className="px-4 py-3.5 text-center font-bold text-zinc-400">{idx + 1}</td>
+                                  <td className="px-4 py-3.5 font-bold text-zinc-800">{q.question}</td>
+                                  <td className="px-4 py-3.5 text-zinc-600">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      {q.options?.map((opt: any) => (
+                                        <span
+                                          key={opt.id}
+                                          className={`px-2 py-0.5 rounded-md text-3xs font-extrabold ${
+                                            opt.is_correct
+                                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                              : "bg-zinc-100 text-zinc-700 border border-zinc-200"
+                                          }`}
+                                        >
+                                          {opt.option_text}
+                                        </span>
+                                      )) || <span className="text-zinc-400 italic">Y (YA) / T (TIDAK)</span>}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3.5 text-right flex justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveQuizForQuestions(srqQuiz);
+                                        handleOpenQuestionEdit(q);
+                                      }}
+                                      title="Edit Soal"
+                                      className="p-2 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-100 text-amber-700 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                                    >
+                                      <Edit3 className="w-4 h-4 text-amber-600" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveQuizForQuestions(srqQuiz);
+                                        handleQuestionDelete(q.id);
+                                      }}
+                                      title="Hapus Soal"
+                                      className="p-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                                    >
+                                      <Trash2 className="w-4 h-4 text-rose-600" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* 7. ATTEMPTS VIEW */}
                 {activeTab === "attempts" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
                     <div className="border-b border-zinc-100 pb-3">
                       <h3 className="text-sm font-extrabold text-zinc-800">Riwayat Jawaban & Hasil Kuis</h3>
                       <p className="text-3xs text-zinc-400">Pantau jawaban detail yang disubmit oleh masing-masing siswa.</p>
@@ -1892,7 +2205,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Nama Siswa</th>
@@ -1936,7 +2249,7 @@ export default function AdminDashboardPage() {
 
                 {/* 9. SCREENING SRQ-29 VIEW */}
                 {activeTab === "screening" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-5 shadow-sm space-y-4 animate-fadeIn">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
                     <div className="border-b border-zinc-100 pb-3">
                       <h3 className="text-sm font-extrabold text-zinc-800 flex items-center gap-2">
                         <Brain className="w-4 h-4 text-[#5A77DF]" />
@@ -1950,7 +2263,7 @@ export default function AdminDashboardPage() {
                     {renderSearchFilterBar()}
 
                     <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                         <thead className="bg-[#f5f7fc]">
                           <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="px-4 py-3">Nama Siswa</th>
@@ -1974,7 +2287,7 @@ export default function AdminDashboardPage() {
                                 <td className="px-4 py-3.5 font-bold text-zinc-800">{attempt.studentName}</td>
                                 <td className="px-4 py-3.5 text-zinc-500 font-semibold">{attempt.className}</td>
                                 <td className="px-4 py-3.5 text-zinc-700 font-medium">{attempt.quizTitle}</td>
-                                <td className="px-4 py-3.5 text-[#5A77DF] font-extrabold text-sm">{attempt.score}/100</td>
+                                <td className="px-4 py-3.5 text-[#5A77DF] font-extrabold text-sm">{attempt.score}/29</td>
                                 <td className="px-4 py-3.5 text-zinc-500">{attempt.completedAt}</td>
                                 <td className="px-4 py-3.5 text-right">
                                   <button
@@ -2009,8 +2322,8 @@ export default function AdminDashboardPage() {
 
       {/* 1. USER MODAL */}
       {showUserModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-xl rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowUserModal(false)}
               className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 cursor-pointer"
@@ -2049,14 +2362,23 @@ export default function AdminDashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-2xs font-bold uppercase text-zinc-400">Password</label>
-                  <input
-                    type="password"
-                    required={!selectedUser}
-                    value={uPassword}
-                    onChange={(e) => setUPassword(e.target.value)}
-                    className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs"
-                    placeholder={selectedUser ? "Kosongkan jika tidak diubah" : "Password akun"}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showUPassword ? "text" : "password"}
+                      required={!selectedUser}
+                      value={uPassword}
+                      onChange={(e) => setUPassword(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 pr-9 text-xs"
+                      placeholder={selectedUser ? "Kosongkan jika tidak diubah" : "Password akun"}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUPassword(!showUPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
+                    >
+                      {showUPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-2xs font-bold uppercase text-zinc-400">Peran / Role</label>
@@ -2086,27 +2408,31 @@ export default function AdminDashboardPage() {
 
               {/* Conditional Student fields */}
               {uRole === "student" && (
-                <div className="grid grid-cols-2 gap-3 p-3 bg-zinc-50 border border-zinc-150 rounded-xl">
+                <div className="grid grid-cols-2 gap-3 p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl">
                   <div className="space-y-1">
-                    <label className="text-2xs font-bold uppercase text-zinc-400">NIS (Nomor Induk Siswa)</label>
+                    <label className="text-2xs font-bold uppercase text-zinc-500">NIS (Nomor Induk Siswa) *</label>
                     <input
                       type="text"
                       required
                       value={uNis}
                       onChange={(e) => setUNis(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
-                      placeholder="NIS"
+                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                      placeholder="Masukkan NIS"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-2xs font-bold uppercase text-zinc-400">Pilih Kelas</label>
+                    <label className="text-2xs font-bold uppercase text-zinc-500">Pilih Kelas *</label>
                     <select
                       value={uClassId}
                       onChange={(e) => setUClassId(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
+                      required
+                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none cursor-pointer font-medium"
                     >
+                      <option value="">-- Pilih Kelas --</option>
                       {classes.map((cls) => (
-                        <option key={cls.id} value={cls.id}>{cls.name}</option>
+                        <option key={cls.id} value={cls.id}>
+                          {cls.name} ({cls.major || "Umum"}) • TA {cls.academic_year || cls.year || "2025/2026"}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -2115,52 +2441,124 @@ export default function AdminDashboardPage() {
 
               {/* Conditional Teacher fields */}
               {uRole === "teacher" && (
-                <div className="space-y-3 p-3 bg-zinc-50 border border-zinc-150 rounded-xl">
+                <div className="space-y-3 p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-2xs font-bold uppercase text-zinc-400">NIP</label>
+                      <label className="text-2xs font-bold uppercase text-zinc-500">NIP / NUPTK *</label>
                       <input
                         type="text"
                         required
                         value={uNip}
                         onChange={(e) => setUNip(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
-                        placeholder="NIP"
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                        placeholder="Nomor Induk Pegawai"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-2xs font-bold uppercase text-zinc-400">Jenis Guru</label>
+                      <label className="text-2xs font-bold uppercase text-zinc-500">No. Telp / WhatsApp</label>
+                      <input
+                        type="text"
+                        value={uPhoneNumber}
+                        onChange={(e) => setUPhoneNumber(e.target.value)}
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                        placeholder="08xxxxxxxxxx"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-2xs font-bold uppercase text-zinc-500">Jabatan / Jenis Guru *</label>
                       <select
                         value={uTeacherType}
-                        onChange={(e) => setUTeacherType(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
+                        onChange={(e) => {
+                          setUTeacherType(e.target.value);
+                          if (e.target.value !== "subject") setUSubjectId("");
+                        }}
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none cursor-pointer font-medium"
                       >
                         <option value="subject">Guru Mata Pelajaran</option>
-                        <option value="bk">Guru BK (Konselor)</option>
+                        <option value="wali_kelas">Wali Kelas</option>
+                        <option value="bk">Guru Bimbingan Konseling (BK)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-2xs font-bold uppercase text-zinc-500">
+                        {uTeacherType === "wali_kelas" ? "Kelas yang Diampu *" : uTeacherType === "bk" ? "Kelas Binaan Utama" : "Kelas Awal *"}
+                      </label>
+                      <select
+                        value={uClassId}
+                        onChange={(e) => setUClassId(e.target.value)}
+                        required={uTeacherType === "wali_kelas" || uTeacherType === "subject"}
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none cursor-pointer font-medium"
+                      >
+                        <option value="">-- Pilih Kelas --</option>
+                        {classes.map((cls) => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name} ({cls.major || "Umum"}) • TA {cls.academic_year || cls.year || "2025/2026"}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
+
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-2xs font-bold uppercase text-zinc-400">Spesialisasi</label>
-                      <input
-                        type="text"
-                        value={uSpecialization}
-                        onChange={(e) => setUSpecialization(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
-                        placeholder="Contoh: Matematika"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-2xs font-bold uppercase text-zinc-400">Jabatan</label>
+                    {uTeacherType === "subject" && (
+                      <div className="space-y-1">
+                        <label className="text-2xs font-bold uppercase text-zinc-500">Mata Pelajaran Awal</label>
+                        <select
+                          value={uSubjectId}
+                          onChange={(e) => setUSubjectId(e.target.value)}
+                          disabled={!uClassId}
+                          className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none cursor-pointer disabled:opacity-50 font-medium"
+                        >
+                          <option value="">-- Pilih Mata Pelajaran --</option>
+                          {subjects
+                            .filter((sub) => !uClassId || sub.class_id?.toString() === uClassId)
+                            .map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.name} {sub.teacher_id ? "(Ada Guru)" : "(Tersedia)"}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                    {/* <div className={uTeacherType === "subject" ? "space-y-1" : "col-span-2 space-y-1"}>
+                      <label className="text-2xs font-bold uppercase text-zinc-500">Keterangan Jabatan (Opsional)</label>
                       <input
                         type="text"
                         value={uPosition}
                         onChange={(e) => setUPosition(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white"
-                        placeholder="Contoh: Wali Kelas 9B"
+                        className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                        placeholder="Contoh: Wali Kelas 9B / Guru BK"
                       />
-                    </div>
+                    </div> */}
+                  </div>
+                </div>
+              )}
+
+              {/* Conditional Admin fields */}
+              {uRole === "admin" && (
+                <div className="grid grid-cols-2 gap-3 p-3.5 bg-zinc-50 border border-zinc-200 rounded-xl">
+                  <div className="space-y-1">
+                    <label className="text-2xs font-bold uppercase text-zinc-500">Divisi / Sub-bagian</label>
+                    <input
+                      type="text"
+                      value={uDivision}
+                      onChange={(e) => setUDivision(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                      placeholder="Contoh: IT & Admin Sistem"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-2xs font-bold uppercase text-zinc-500">Unit Kerja</label>
+                    <input
+                      type="text"
+                      value={uUnit}
+                      onChange={(e) => setUUnit(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs bg-white focus:border-[#5A77DF] outline-none font-medium"
+                      placeholder="Contoh: Pengelola Platform"
+                    />
                   </div>
                 </div>
               )}
@@ -2187,8 +2585,8 @@ export default function AdminDashboardPage() {
 
       {/* 2. CLASS MODAL */}
       {showClassModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 shadow-2xl relative">
             <button
               onClick={() => setShowClassModal(false)}
               className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 cursor-pointer"
@@ -2221,6 +2619,17 @@ export default function AdminDashboardPage() {
                   placeholder="Contoh: IPA / Umum"
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-2xs font-bold uppercase text-zinc-400">Tahun Ajaran (Academic Year)</label>
+                <input
+                  type="text"
+                  required
+                  value={cAcademicYear}
+                  onChange={(e) => setCAcademicYear(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-xs"
+                  placeholder="Contoh: 2025/2026"
+                />
+              </div>
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
@@ -2243,8 +2652,8 @@ export default function AdminDashboardPage() {
 
       {/* 3. SUBJECT MODAL */}
       {showSubjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 shadow-2xl relative">
             <button
               onClick={() => setShowSubjectModal(false)}
               className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 cursor-pointer"
@@ -2274,7 +2683,9 @@ export default function AdminDashboardPage() {
                   className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-xs"
                 >
                   {classes.map((cls) => (
-                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name} ({cls.major || "Umum"}) • TA {cls.academic_year || cls.year || "2025/2026"}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -2313,8 +2724,8 @@ export default function AdminDashboardPage() {
 
       {/* 4. MODULE MODAL */}
       {showModuleModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-4 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowModuleModal(false)}
               className="absolute right-4 top-4 text-zinc-400 hover:text-zinc-600 cursor-pointer"
@@ -2756,7 +3167,7 @@ export default function AdminDashboardPage() {
                     ) : (
                       <span className="text-xs font-bold text-[#5A77DF] flex items-center gap-1.5">
                         <Brain className="w-4 h-4 text-[#5A77DF]" />
-                        <span>Evaluasi Kesehatan Mental SRQ-29</span>
+                        <span>Skor SRQ-29: {selectedAttempt.score} / 29</span>
                       </span>
                     )}
                     <button
@@ -2873,7 +3284,7 @@ export default function AdminDashboardPage() {
                     <BookOpen className="w-4 h-4 text-[#5A77DF]" />
                     <span>Centang Mata Pelajaran & Kelas yang Diampu ({tSelectedSubjectIds.length} terpilih)</span>
                   </label>
-                  <span className="text-3xs text-zinc-400 font-semibold">Guru ini bisa mengampu banyak mapel di banyak kelas</span>
+                  {/* <span className="text-3xs text-zinc-400 font-semibold">Guru ini bisa mengampu banyak mapel di banyak kelas</span> */}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-60 overflow-y-auto p-3 rounded-xl border border-zinc-200 bg-white">
@@ -3006,14 +3417,23 @@ export default function AdminDashboardPage() {
                   <label className="block text-3xs font-extrabold uppercase tracking-wider text-zinc-500 mb-1">
                     Password {selectedActor ? "(Kosongkan jika tidak diubah)" : "*"}
                   </label>
-                  <input
-                    type="password"
-                    value={actorPassword}
-                    onChange={(e) => setActorPassword(e.target.value)}
-                    required={!selectedActor}
-                    placeholder="••••••••"
-                    className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-800"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showActorPassword ? "text" : "password"}
+                      value={actorPassword}
+                      onChange={(e) => setActorPassword(e.target.value)}
+                      required={!selectedActor}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 pr-9 text-xs font-semibold text-zinc-800"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowActorPassword(!showActorPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
+                    >
+                      {showActorPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-3xs font-extrabold uppercase tracking-wider text-zinc-500 mb-1">
@@ -3046,19 +3466,29 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-extrabold uppercase tracking-wider text-[#3E53A2] flex items-center gap-1.5">
                     <Key className="w-4 h-4 text-[#5A77DF]" />
-                    <span>Matriks Hak Akses Modul Admin ({actorPermissions.length} Izin Aktif)</span>
+                    <span>Matriks Hak Akses Modul Admin ({actorPermissions.length} / {ALL_ADMIN_PERMISSIONS.length} Izin Aktif)</span>
                   </label>
-                  <span className="text-3xs text-zinc-400 font-semibold">Centang fitur yang boleh dikelola oleh admin ini</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActorPermissions(ALL_ADMIN_PERMISSIONS.map((p) => p.key))}
+                      className="text-3xs font-extrabold text-[#5A77DF] hover:underline cursor-pointer"
+                    >
+                      Centang Semua
+                    </button>
+                    <span className="text-zinc-300">•</span>
+                    <button
+                      type="button"
+                      onClick={() => setActorPermissions([])}
+                      className="text-3xs font-extrabold text-rose-500 hover:underline cursor-pointer"
+                    >
+                      Hapus Semua
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2.5 p-3 rounded-xl border border-zinc-200 bg-white">
-                  {[
-                    { key: "manage_users", label: "Manajemen User & Siswa", desc: "Dapat mengelola akun siswa, registrasi, NIS, dan profil user." },
-                    { key: "manage_teachers", label: "Manajemen Guru & Pengampuan", desc: "Dapat mengelola data NIP, Wali Kelas/BK, dan alokasi mapel mengajar." },
-                    { key: "manage_academics", label: "Akademik & Pembelajaran", desc: "Dapat mengelola Kelas, Mata Pelajaran, Modul Belajar, dan Kuis." },
-                    { key: "manage_reports", label: "Laporan & Rekapitulasi", desc: "Dapat melihat rekap riwayat kuis siswa, progres, dan alert risiko." },
-                    { key: "manage_roles", label: "Hak Akses & Role Aktor Admin", desc: "Hak Superadmin untuk mengelola akun aktor admin lain dan perizinan." },
-                  ].map((perm) => {
+                <div className="grid grid-cols-1 gap-2.5 max-h-72 overflow-y-auto custom-scrollbar p-3 rounded-xl border border-zinc-200 bg-white">
+                  {ALL_ADMIN_PERMISSIONS.map((perm) => {
                     const isChecked = actorPermissions.includes(perm.key);
                     return (
                       <label

@@ -23,14 +23,15 @@ model User {
 }
 
 model SchoolClass {
-  id         Int       @id @default(autoincrement())
-  name       String    @db.VarChar(100)
-  major      String    @db.VarChar(100)
-  created_at DateTime? @default(now()) @db.Timestamp(0)
-  updated_at DateTime? @default(now()) @updatedAt @db.Timestamp(0)
-  students   Siswa[]
-  subjects   Subject[]
-  teachers   Guru[]
+  id            Int       @id @default(autoincrement())
+  name          String    @db.VarChar(100)
+  major         String    @db.VarChar(100)
+  academic_year String?   @db.VarChar(50)
+  created_at    DateTime? @default(now()) @db.Timestamp(0)
+  updated_at    DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  students      Siswa[]
+  subjects      Subject[]
+  teachers      Guru[]
 
   @@map("classes")
 }

@@ -38,7 +38,8 @@ export async function GET(
       where: { id: moduleId },
       include: {
         category: true,
-        level: true
+        level: true,
+        subject: true
       }
     });
 
@@ -114,7 +115,8 @@ export async function GET(
         video_url: targetModule.video_url,
         media_type: targetModule.media_type,
         category: targetModule.category.name,
-        level: targetModule.level.name
+        level: targetModule.level.name,
+        subjectName: targetModule.subject?.name || "Mata Pelajaran"
       },
       isCompleted: !!completedRecord,
       completedAt: completedRecord?.completed_at || null,

@@ -27,11 +27,12 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
   const [mediaUrlInput, setMediaUrlInput] = useState("");
   const [mediaTypeInput, setMediaTypeInput] = useState<"image" | "video">("image");
   const [activeTab, setActiveTab] = useState<"upload" | "url">("upload");
+  const [insertPosition, setInsertPosition] = useState<"end" | "cursor">("end");
 
   const savedRangeRef = useRef<Range | null>(null);
   const isEditingRef = useRef<boolean>(false);
 
-  // Sync value to editor content if changed externally (not while user is actively editing)
+  // Sync value to editor content if changed externally
   useEffect(() => {
     if (editorRef.current && !isEditingRef.current) {
       if (editorRef.current.innerHTML !== value) {
@@ -44,21 +45,28 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
     if (typeof window !== "undefined") {
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        if (editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
-          savedRangeRef.current = range.cloneRange();
+        try {
+          const range = sel.getRangeAt(0);
+          if (editorRef.current && editorRef.current.contains(range.commonAncestorContainer)) {
+            // Only save selection if it's inside a specific text node or child element
+            savedRangeRef.current = range.cloneRange();
+          }
+        } catch (e) {
+          // ignore
         }
       }
     }
   };
 
   const restoreSelection = () => {
-    if (typeof window !== "undefined" && savedRangeRef.current) {
+    if (typeof window !== "undefined" && savedRangeRef.current && editorRef.current) {
       const sel = window.getSelection();
       if (sel) {
         try {
-          sel.removeAllRanges();
-          sel.addRange(savedRangeRef.current);
+          if (editorRef.current.contains(savedRangeRef.current.commonAncestorContainer)) {
+            sel.removeAllRanges();
+            sel.addRange(savedRangeRef.current);
+          }
         } catch (e) {
           // ignore
         }
@@ -79,6 +87,9 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
 
   const execCmd = (command: string, arg: string | undefined = undefined) => {
     isEditingRef.current = true;
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
     restoreSelection();
     document.execCommand(command, false, arg);
     saveSelection();
@@ -110,11 +121,11 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
       }
 
       if (json.fileType === "image") {
-        insertHtmlAtCursor(
-          `<img src="${json.url}" alt="${json.fileName}" class="my-4 max-w-full rounded-2xl border border-zinc-200 shadow-lg" />`
+        insertHtmlAtTarget(
+          `<div className="my-4 text-center"><img src="${json.url}" alt="${json.fileName}" class="my-4 max-w-full rounded-2xl border border-zinc-200 shadow-lg mx-auto" /></div>`
         );
       } else {
-        insertHtmlAtCursor(
+        insertHtmlAtTarget(
           `<div class="my-4"><video src="${json.url}" controls class="w-full rounded-2xl border border-zinc-200 shadow-lg max-h-[400px] bg-black"></video></div>`
         );
       }
@@ -131,11 +142,11 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
     const url = mediaUrlInput.trim();
 
     if (mediaTypeInput === "image") {
-      insertHtmlAtCursor(
-        `<img src="${url}" alt="Gambar Modul" class="my-4 max-w-full rounded-2xl border border-zinc-200 shadow-lg" />`
+      insertHtmlAtTarget(
+        `<div className="my-4 text-center"><img src="${url}" alt="Gambar Modul" class="my-4 max-w-full rounded-2xl border border-zinc-200 shadow-lg mx-auto" /></div>`
       );
     } else {
-      insertHtmlAtCursor(
+      insertHtmlAtTarget(
         `<div class="my-4"><video src="${url}" controls class="w-full rounded-2xl border border-zinc-200 shadow-lg max-h-[400px] bg-black"></video></div>`
       );
     }
@@ -144,7 +155,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
     setShowMediaModal(false);
   };
 
-  const insertHtmlAtCursor = (htmlToInsert: string) => {
+  const insertHtmlAtTarget = (htmlToInsert: string) => {
     const editor = editorRef.current;
     if (!editor) return;
 
@@ -154,65 +165,69 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
     let range: Range | null = null;
     const sel = window.getSelection();
 
-    // 1. Check savedRangeRef
-    if (savedRangeRef.current) {
-      try {
-        if (editor.contains(savedRangeRef.current.commonAncestorContainer)) {
-          range = savedRangeRef.current;
+    // If position is set to "cursor", try to use saved or active range
+    if (insertPosition === "cursor") {
+      if (savedRangeRef.current) {
+        try {
+          if (editor.contains(savedRangeRef.current.commonAncestorContainer)) {
+            // Ensure range is not pointing at (editor, 0)
+            if (!(savedRangeRef.current.commonAncestorContainer === editor && savedRangeRef.current.startOffset === 0)) {
+              range = savedRangeRef.current;
+            }
+          }
+        } catch (e) {
+          range = null;
         }
-      } catch (e) {
-        range = null;
       }
-    }
 
-    // 2. Check current live selection inside editor
-    if (!range && sel && sel.rangeCount > 0) {
-      try {
-        const activeRange = sel.getRangeAt(0);
-        if (editor.contains(activeRange.commonAncestorContainer)) {
-          range = activeRange;
+      if (!range && sel && sel.rangeCount > 0) {
+        try {
+          const activeRange = sel.getRangeAt(0);
+          if (editor.contains(activeRange.commonAncestorContainer)) {
+            if (!(activeRange.commonAncestorContainer === editor && activeRange.startOffset === 0)) {
+              range = activeRange;
+            }
+          }
+        } catch (e) {
+          range = null;
         }
-      } catch (e) {
-        range = null;
       }
     }
 
-    // 3. Fallback: If no valid selection range is active, set cursor to the VERY END of the editor content (NEVER AT TOP)
-    if (!range) {
-      range = document.createRange();
-      range.selectNodeContents(editor);
-      range.collapse(false); // Collapse to end of editor
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(range);
+    if (range && insertPosition === "cursor") {
+      // Insert at active cursor selection
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = htmlToInsert + `<p><br></p>`;
+      const fragment = document.createDocumentFragment();
+      let child: Node | null;
+      let lastInsertedNode: Node | null = null;
+      while ((child = tempDiv.firstChild)) {
+        lastInsertedNode = fragment.appendChild(child);
       }
-    }
 
-    // Prepare content to insert + trailing empty paragraph so user can type below image immediately
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = htmlToInsert + `<p><br></p>`;
-    const fragment = document.createDocumentFragment();
-    let child: Node | null;
-    let lastInsertedNode: Node | null = null;
-    while ((child = tempDiv.firstChild)) {
-      lastInsertedNode = fragment.appendChild(child);
-    }
+      range.deleteContents();
+      range.insertNode(fragment);
 
-    range.deleteContents();
-    range.insertNode(fragment);
-
-    // Place selection cursor after the inserted content
-    if (lastInsertedNode && sel) {
-      try {
-        const newRange = document.createRange();
-        newRange.setStartAfter(lastInsertedNode);
-        newRange.setEndAfter(lastInsertedNode);
-        sel.removeAllRanges();
-        sel.addRange(newRange);
-        savedRangeRef.current = newRange.cloneRange();
-      } catch (e) {
-        // ignore
+      if (lastInsertedNode && sel) {
+        try {
+          const newRange = document.createRange();
+          newRange.setStartAfter(lastInsertedNode);
+          newRange.setEndAfter(lastInsertedNode);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+          savedRangeRef.current = newRange.cloneRange();
+        } catch (e) {}
       }
+    } else {
+      // Append to the VERY END of the editor content (GUARANTEED AT BOTTOM)
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = htmlToInsert + `<p><br></p>`;
+      while (tempDiv.firstChild) {
+        editor.appendChild(tempDiv.firstChild);
+      }
+
+      // Scroll editor to bottom
+      editor.scrollTop = editor.scrollHeight;
     }
 
     onChange(editor.innerHTML);
@@ -230,6 +245,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Tebal (Bold)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("bold")}
             className="h-8 w-8 rounded-lg font-black hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
           >
@@ -238,6 +254,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Miring (Italic)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("italic")}
             className="h-8 w-8 rounded-lg italic font-serif hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
           >
@@ -246,6 +263,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Garis Bawah (Underline)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("underline")}
             className="h-8 w-8 rounded-lg underline hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
           >
@@ -254,6 +272,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Coret (Strikethrough)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("strikeThrough")}
             className="h-8 w-8 rounded-lg line-through hover:bg-zinc-200 text-zinc-700 transition cursor-pointer"
           >
@@ -266,6 +285,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Judul Besar (H1)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("formatBlock", "<h1>")}
             className="px-2 py-1 rounded-lg font-extrabold hover:bg-zinc-200 text-zinc-700 text-3xs uppercase tracking-wider transition cursor-pointer"
           >
@@ -274,6 +294,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Sub Judul (H2)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("formatBlock", "<h2>")}
             className="px-2 py-1 rounded-lg font-bold hover:bg-zinc-200 text-zinc-700 text-3xs uppercase tracking-wider transition cursor-pointer"
           >
@@ -282,6 +303,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Teks Normal (Paragraph)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("formatBlock", "<p>")}
             className="px-2 py-1 rounded-lg font-normal hover:bg-zinc-200 text-zinc-600 text-3xs uppercase tracking-wider transition cursor-pointer"
           >
@@ -294,6 +316,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Rata Kiri"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("justifyLeft")}
             className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center"
           >
@@ -302,6 +325,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Rata Tengah"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("justifyCenter")}
             className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center"
           >
@@ -310,6 +334,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Rata Kanan"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("justifyRight")}
             className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center"
           >
@@ -318,6 +343,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Rata Kanan Kiri (Justify)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("justifyFull")}
             className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center"
           >
@@ -326,26 +352,29 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         </div>
 
         {/* Lists & Quote */}
-        <div className="flex items-center gap-0.5 border-r border-zinc-200 px-2">
+        <div className="flex items-center gap-1 border-r border-zinc-200 px-2">
           <button
             type="button"
             title="Poin Poin (Bullet List)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("insertUnorderedList")}
-            className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center text-xs font-bold"
+            className="px-2 py-1 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center text-xs font-bold"
           >
             • List
           </button>
           <button
             type="button"
             title="Daftar Angka (Numbered List)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("insertOrderedList")}
-            className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center text-xs font-bold"
+            className="px-2 py-1 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center text-xs font-bold"
           >
             1. List
           </button>
           <button
             type="button"
             title="Kutipan (Blockquote)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("formatBlock", "<blockquote>")}
             className="h-8 w-8 rounded-lg hover:bg-zinc-200 text-zinc-700 transition cursor-pointer flex items-center justify-center text-xs font-serif font-bold"
           >
@@ -357,6 +386,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         <div className="flex items-center gap-1.5 pl-2">
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               saveSelection();
               setShowMediaModal(true);
@@ -370,6 +400,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
           <button
             type="button"
             title="Hapus Format (Clear Formatting)"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => execCmd("removeFormat")}
             className="h-8 w-8 rounded-lg hover:bg-rose-100 text-rose-600 transition cursor-pointer flex items-center justify-center"
           >
@@ -388,7 +419,7 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
         onBlur={saveSelection}
         onFocus={saveSelection}
         onClick={saveSelection}
-        className="min-h-[220px] max-h-[500px] overflow-y-auto p-4 text-sm text-zinc-900 outline-none focus:ring-0 prose max-w-none custom-scrollbar font-sans bg-white"
+        className="min-h-[220px] max-h-[500px] overflow-y-auto p-4 text-sm text-zinc-900 outline-none focus:ring-0 prose max-w-none custom-scrollbar font-sans bg-white [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_blockquote]:border-l-4 [&_blockquote]:border-[#5A77DF] [&_blockquote]:pl-4 [&_blockquote]:italic [&_h1]:text-xl [&_h1]:font-black [&_h2]:text-lg [&_h2]:font-bold"
         style={{ whiteSpace: "pre-wrap" }}
         data-placeholder={placeholder || "Tuliskan materi pelajaran secara mendalam di sini..."}
       />
@@ -410,6 +441,35 @@ export default function RichTextEditor({ value, onChange, placeholder }: RichTex
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Position Option Selector */}
+            <div className="space-y-1.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                Posisi Penempatan Gambar / Video
+              </label>
+              <div className="flex gap-4 text-xs font-extrabold text-zinc-700">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="insertPosition"
+                    checked={insertPosition === "end"}
+                    onChange={() => setInsertPosition("end")}
+                    className="accent-[#5A77DF]"
+                  />
+                  <span>Di Baris Akhir Teks (Default)</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="insertPosition"
+                    checked={insertPosition === "cursor"}
+                    onChange={() => setInsertPosition("cursor")}
+                    className="accent-[#5A77DF]"
+                  />
+                  <span>Sesuai Posisi Kursor</span>
+                </label>
+              </div>
             </div>
 
             {/* Tab selector: Upload File vs Insert Link */}

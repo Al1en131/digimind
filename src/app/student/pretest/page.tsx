@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 interface Option {
   id: number;
@@ -143,14 +143,13 @@ export default function PretestPage() {
       }
 
       setResult(data.result);
-      
+
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         const userObj = JSON.parse(storedUser);
         userObj.hasCompletedPretest = true;
         localStorage.setItem("user", JSON.stringify(userObj));
       }
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Terjadi kesalahan koneksi.";
       setError(errorMessage);
@@ -160,10 +159,10 @@ export default function PretestPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-zinc-900">
+      <div className="flex min-h-screen items-center justify-center bg-[#F8FAFC] text-zinc-900">
         <div className="text-center space-y-4">
-          <div className="h-12 w-12 border-4 border-violet-600 border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-zinc-400">Memuat Kuesioner SRQ-29...</p>
+          <div className="h-12 w-12 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-semibold text-zinc-600">Memuat Kuesioner SRQ-29...</p>
         </div>
       </div>
     );
@@ -171,40 +170,40 @@ export default function PretestPage() {
 
   if (result) {
     return (
-      <div className="relative flex min-h-screen flex-col items-center justify-center bg-white text-zinc-900 font-sans">
-        <div className="w-full max-w-3xl rounded-2xl border border-emerald-500/20 bg-emerald-950/10 p-8 shadow-2xl backdrop-blur-xl text-center space-y-6 animate-fadeIn">
-          <div className="h-16 w-16 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto text-3xl">
+      <div className="relative flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-50 via-indigo-50/30 to-violet-50/40 text-zinc-900 font-sans p-4">
+        <div className="w-full max-w-3xl rounded-3xl border border-emerald-200 bg-white p-8 md:p-10 shadow-xl text-center space-y-6 animate-fadeIn">
+          <div className="h-16 w-16 bg-emerald-100 text-emerald-600 border border-emerald-300 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-sm">
             ✓
           </div>
-          <h2 className="text-2xl font-extrabold tracking-tight">Analisis SRQ-29 Selesai!</h2>
-          <p className="text-sm text-zinc-300">
+          <h2 className="text-2xl md:text-3xl font-black text-zinc-900 tracking-tight">Analisis SRQ-29 Selesai!</h2>
+          <p className="text-sm text-zinc-600">
             Terima kasih telah mengisi kuesioner Self Reporting Questionnaire 29 secara jujur.
           </p>
 
-          <div className="p-5 rounded-2xl border border-white/10 bg-white/[0.02] text-left space-y-3">
-            <div className="text-2xs font-extrabold uppercase tracking-wider text-violet-400">
+          <div className="p-6 rounded-2xl border border-indigo-100 bg-indigo-50/50 text-left space-y-3 shadow-2xs">
+            <div className="text-2xs font-extrabold uppercase tracking-wider text-[#5A77DF]">
               Hasil Asesmen Emosional & Kesehatan Mental
             </div>
-            <div className="text-base font-bold text-zinc-100">
+            <div className="text-lg font-extrabold text-zinc-900">
               {result.mentalLevel}
             </div>
-            <p className="text-xs text-zinc-300 leading-relaxed">
+            <p className="text-xs text-zinc-700 leading-relaxed font-medium">
               {result.summaryText}
             </p>
           </div>
 
           {result.findings && result.findings.length > 0 && (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-300 text-left space-y-2">
-              <div className="font-bold flex items-center gap-1.5 text-amber-400">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-xs text-amber-900 text-left space-y-2.5">
+              <div className="font-extrabold flex items-center gap-1.5 text-amber-800 text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>Catatan Penanganan Konseling:</span>
               </div>
-              <ul className="list-disc list-inside space-y-1 text-2xs text-amber-200/90">
+              <ul className="list-disc list-inside space-y-1 text-xs text-amber-800/90 font-medium">
                 {result.findings.map((f, i) => (
                   <li key={i}>{f}</li>
                 ))}
               </ul>
-              <p className="text-3xs text-amber-400/80 pt-1">
+              <p className="text-2xs text-amber-700 pt-1 font-semibold">
                 * Tim bimbingan konseling (BK) akan mendampingi Anda secara rahasia dan aman.
               </p>
             </div>
@@ -212,7 +211,7 @@ export default function PretestPage() {
 
           <button
             onClick={() => router.push("/student/dashboard")}
-            className="w-full rounded-xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] py-4 text-sm font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+            className="w-full rounded-2xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] py-4 text-sm font-extrabold text-white shadow-md shadow-indigo-200 transition-all hover:brightness-110 active:scale-[0.99] cursor-pointer"
           >
             Masuk ke Dashboard
           </button>
@@ -226,67 +225,76 @@ export default function PretestPage() {
   const progressPercent = quiz ? Math.round((answeredCount / quiz.questions.length) * 100) : 0;
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-start bg-white px-4 py-10 font-sans text-zinc-900 md:py-16">
-      {/* Decorative Blur Orbs */}
-      <div className="absolute top-0 left-0 h-96 w-96 rounded-full bg-violet-600/10 blur-3xl pointer-events-none" />
-      <div className="absolute bottom-0 right-0 h-96 w-96 rounded-full bg-indigo-600/10 blur-3xl pointer-events-none" />
+    <div className="relative flex min-h-screen md:h-screen md:max-h-screen flex-col items-center justify-between bg-gradient-to-br from-slate-50 via-indigo-50/40 to-violet-50/30 p-3 sm:p-4 md:p-5 font-sans text-zinc-900 md:overflow-hidden">
+      {/* Decorative Background Blur Circles */}
+      <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-violet-400/10 blur-3xl pointer-events-none" />
+      <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-indigo-400/10 blur-3xl pointer-events-none" />
 
-      <div className="w-full max-w-7xl z-10 space-y-6 px-2 sm:px-4">
+      <div className="w-full max-w-7xl z-10 flex flex-col h-full space-y-3.5 min-h-0">
         
-        {/* Header Title Card */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-xl shadow-xl space-y-4">
+        {/* Header Title Card (Shrink-0) */}
+        <div className="shrink-0 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-4 md:p-5 shadow-md shadow-slate-200/60 space-y-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <span className="text-3xs font-extrabold uppercase tracking-widest text-violet-400 bg-violet-500/10 px-2.5 py-0.5 rounded-full border border-violet-500/20 font-mono">
-                Kuesioner Diagnosis Awal
-              </span>
-              <h1 className="text-xl md:text-2xl font-extrabold tracking-tight text-zinc-100 uppercase mt-1">
-                SELF REPORTING QUESTIONNAIRE - 29 (SRQ-29)
-              </h1>
+            <div className="flex items-center gap-3.5">
+              <img
+                src="/screening-illustration.png"
+                alt="DigiMind Screening Illustration"
+                className="h-16 sm:h-20 md:h-22 w-auto object-contain shrink-0 drop-shadow-sm"
+              />
+              <div className="space-y-1">
+                <span className="inline-flex items-center text-3xs font-black uppercase tracking-widest text-[#5A77DF] bg-[#5A77DF]/10 px-2.5 py-0.5 rounded-full border border-[#5A77DF]/20 font-mono">
+                  Kuesioner Diagnosis Awal
+                </span>
+                <h1 className="text-lg md:text-xl font-black tracking-tight text-zinc-900 uppercase">
+                  SELF REPORTING QUESTIONNAIRE - 29 (SRQ-29)
+                </h1>
+              </div>
             </div>
-            <div className="text-2xs text-zinc-400 max-w-md bg-white/[0.02] p-3 rounded-xl border border-white/5 leading-relaxed">
-              <strong>Petunjuk:</strong> Bacalah pertanyaan seluruhnya. Apabila anda menganggap pertanyaan ini anda alami dalam 30 hari terakhir, pilih <strong>Y (YA)</strong>. Sebaliknya apabila tidak anda alami dalam 30 hari terakhir, pilih <strong>T (TIDAK)</strong>. Jawaban anda bersifat rahasia.
+            <div className="text-2xs sm:text-xs text-zinc-700 max-w-sm bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 leading-relaxed font-medium">
+              <strong className="text-zinc-900 font-extrabold">Petunjuk:</strong> Pilih <strong className="text-emerald-700 font-black">Y (YA)</strong> jika Anda mengalaminya dalam 30 hari terakhir, atau <strong className="text-[#3E53A2] font-black">T (TIDAK)</strong> jika tidak. Jawaban bersifat rahasia.
             </div>
           </div>
 
           {/* Progress Bar */}
-          <div className="pt-2 flex items-center gap-4 border-t border-white/5">
-            <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+          <div className="pt-1 flex items-center gap-3">
+            <div className="flex-1 h-2 rounded-full bg-[#5A77DF]/15 border border-[#5A77DF]/25 overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 transition-all duration-300 ease-out"
+                className="h-full bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] transition-all duration-300 ease-out rounded-full"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-xs font-semibold text-zinc-400 font-mono">{progressPercent}% ({answeredCount}/29)</span>
+            <span className="text-xs font-extrabold text-zinc-600 font-mono">{progressPercent}% ({answeredCount}/29)</span>
           </div>
         </div>
 
-        {/* Content Layout - Grid 7:5 Ratio for Wider Number Navigator Card */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Content Layout - Flex-1 Grid 5:7 Ratio */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-5 overflow-y-auto md:overflow-hidden">
           
-          {/* Main Quiz Card (7 Cols) */}
-          <div className="md:col-span-7 rounded-2xl border border-white/10 bg-white/[0.02] p-6 shadow-2xl backdrop-blur-xl md:p-8 space-y-6 flex flex-col justify-between">
+          {/* Main Quiz Card (5 Cols - Compact Question Area) */}
+          <div className="md:col-span-5 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-5 md:p-6 shadow-md shadow-slate-200/60 flex flex-col justify-between overflow-y-auto space-y-4">
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               {error && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-xs text-red-400 animate-pulse flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
               {/* Current Question */}
               {currentQuestion && (
-                <div className="space-y-6">
-                  <div className="text-base font-semibold leading-relaxed text-zinc-100">
-                    <span className="text-violet-400 font-extrabold uppercase mr-1.5 font-mono">
-                      Pertanyaan {currentIndex + 1} dari {quiz?.questions.length}:
-                    </span>{" "}
-                    {currentQuestion.question}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <span className="text-xs md:text-sm font-black text-[#5A77DF] uppercase tracking-wider font-mono block">
+                      PERTANYAAN {currentIndex + 1} DARI {quiz?.questions.length}
+                    </span>
+                    <h2 className="text-base sm:text-lg md:text-xl font-black leading-relaxed text-zinc-900">
+                      {currentQuestion.question}
+                    </h2>
                   </div>
 
                   {/* Y / T Options */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div className="grid grid-cols-1 gap-3 pt-1">
                     {currentQuestion.options.map((opt) => {
                       const isSelected = answers[currentQuestion.id] === opt.id;
                       const isYesOption = opt.option_text.toUpperCase().includes("Y");
@@ -296,21 +304,23 @@ export default function PretestPage() {
                           key={opt.id}
                           type="button"
                           onClick={() => handleSelectOption(currentQuestion.id, opt.id)}
-                          className={`w-full flex items-center justify-between rounded-xl border px-5 py-4 text-sm font-bold transition-all duration-200 cursor-pointer ${
+                          className={`w-full flex items-center justify-between rounded-xl border px-4.5 py-3.5 text-sm font-extrabold transition-all duration-200 cursor-pointer shadow-2xs ${
                             isSelected
                               ? isYesOption
-                                ? "border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                                : "border-indigo-500 bg-indigo-500/15 text-indigo-300 shadow-[0_0_20px_rgba(99,102,241,0.2)]"
-                              : "border-white/5 bg-white/[0.01] text-zinc-400 hover:border-white/15 hover:bg-white/[0.04] hover:text-zinc-200"
+                                ? "border-2 border-emerald-500 bg-emerald-50 text-emerald-900 shadow-md shadow-emerald-100"
+                                : "border-2 border-[#5A77DF] bg-indigo-50/70 text-[#3E53A2] shadow-md shadow-indigo-100"
+                              : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF] hover:bg-slate-50 hover:text-zinc-900"
                           }`}
                         >
-                          <span className="text-base font-black">{opt.option_text}</span>
-                          <span className={`h-6 w-6 rounded-full border flex items-center justify-center text-xs ${
+                          <span className="text-sm sm:text-base font-black tracking-wide">{opt.option_text}</span>
+                          <span className={`h-6 w-6 rounded-full border-2 flex items-center justify-center text-xs font-black transition-all ${
                             isSelected
-                              ? isYesOption ? "border-emerald-400 bg-emerald-400 text-black font-extrabold" : "border-indigo-400 bg-indigo-400 text-black font-extrabold"
-                              : "border-white/20"
+                              ? isYesOption
+                                ? "border-emerald-500 bg-emerald-500 text-white"
+                                : "border-[#5A77DF] bg-[#5A77DF] text-white"
+                              : "border-zinc-300 text-transparent"
                           }`}>
-                            {isSelected ? "✓" : ""}
+                            ✓
                           </span>
                         </button>
                       );
@@ -321,12 +331,12 @@ export default function PretestPage() {
             </div>
 
             {/* Navigation Actions */}
-            <div className="mt-8 flex items-center justify-between border-t border-white/5 pt-6">
+            <div className="mt-4 flex items-center justify-between pt-2">
               <button
                 type="button"
                 onClick={handlePrev}
                 disabled={currentIndex === 0}
-                className="rounded-xl border border-white/10 bg-white/[0.02] px-6 py-3 text-xs font-semibold text-zinc-300 transition-all hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-30 cursor-pointer"
+                className="rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-xs font-bold text-zinc-700 transition-all hover:bg-slate-100 hover:text-zinc-900 disabled:pointer-events-none disabled:opacity-40 disabled:bg-slate-50 cursor-pointer shadow-2xs"
               >
                 Sebelumnya
               </button>
@@ -336,22 +346,22 @@ export default function PretestPage() {
                   type="button"
                   onClick={handleSubmit}
                   disabled={submitting}
-                  className="rounded-xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] px-8 py-3.5 text-xs font-extrabold uppercase tracking-wider text-white shadow-lg shadow-indigo-500/20 transition-all hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                  className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-emerald-200 transition-all hover:brightness-105 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
                 >
                   {submitting ? (
                     <span className="flex items-center gap-2">
                       <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Menganalisis SRQ-29...
+                      Menganalisis...
                     </span>
                   ) : (
-                    "Kirim Kuesioner SRQ-29"
+                    "Kirim SRQ-29"
                   )}
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="rounded-xl bg-violet-600 px-8 py-3 text-xs font-semibold text-white transition-all hover:bg-violet-500 active:scale-[0.98] cursor-pointer"
+                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-2.5 text-xs font-extrabold text-white shadow-md shadow-indigo-200 transition-all active:scale-[0.98] cursor-pointer"
                 >
                   Selanjutnya
                 </button>
@@ -360,17 +370,18 @@ export default function PretestPage() {
 
           </div>
 
-          {/* Question Navigator Sidebar (Wider - 5 Cols) */}
-          <div className="md:col-span-5 rounded-2xl border border-white/10 bg-white/[0.02] p-6 shadow-2xl backdrop-blur-xl flex flex-col justify-between">
-            <div>
-              <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-4 pb-2 border-b border-white/5 font-mono flex items-center justify-between">
+          {/* Question Navigator Sidebar (7 Cols - Fill Section Grid) */}
+          <div className="md:col-span-7 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-5 md:p-6 shadow-md shadow-slate-200/60 flex flex-col justify-between overflow-y-auto space-y-3">
+            <div className="flex-1 flex flex-col min-h-0 justify-between space-y-3">
+              <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-800 shrink-0 font-mono flex items-center justify-between">
                 <span>Daftar Soal SRQ-29</span>
-                <span className="text-3xs font-extrabold text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-md border border-violet-500/20">
-                  {answeredCount}/29 Dijawab
+                <span className="text-3xs font-extrabold text-[#5A77DF] bg-[#5A77DF]/10 px-2.5 py-0.5 rounded-lg border border-[#5A77DF]/20">
+                  {answeredCount}/29 DIJAWAB
                 </span>
               </h2>
               
-              <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+              {/* Enlarged Number Grid (6 Columns) filling the section */}
+              <div className="flex-1 min-h-0 grid grid-cols-5 sm:grid-cols-6 md:grid-cols-6 gap-2.5 sm:gap-3 my-auto">
                 {quiz?.questions.map((q, idx) => {
                   const isAnswered = !!answers[q.id];
                   const isActive = currentIndex === idx;
@@ -380,34 +391,36 @@ export default function PretestPage() {
                       key={q.id}
                       type="button"
                       onClick={() => setCurrentIndex(idx)}
-                      className={`flex flex-col items-center justify-center rounded-xl py-3 px-2 text-center border transition-all cursor-pointer ${
+                      className={`flex flex-col items-center justify-center rounded-xl sm:rounded-2xl py-2.5 sm:py-3.5 px-1.5 text-center border transition-all cursor-pointer h-full min-h-[52px] sm:min-h-[60px] ${
                         isActive
-                          ? "border-violet-500 bg-violet-600/25 text-white font-bold ring-2 ring-violet-500/50 shadow-[0_0_15px_rgba(139,92,246,0.3)]"
+                          ? "border-2 border-[#3E53A2] bg-[#5A77DF] text-white font-black shadow-md shadow-indigo-200 ring-2 ring-[#5A77DF]/40 scale-[1.02]"
                           : isAnswered
-                          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:border-emerald-500/60 font-semibold"
-                          : "border-white/5 bg-white/[0.01] text-zinc-400 hover:border-white/20 hover:bg-white/[0.04]"
+                          ? "border-2 border-emerald-400 bg-emerald-50 text-emerald-900 font-black shadow-2xs hover:bg-emerald-100"
+                          : "border-zinc-200 bg-slate-50 text-zinc-700 hover:border-zinc-300 hover:bg-slate-100 font-bold"
                       }`}
                     >
-                      <span className="text-[10px] font-semibold uppercase tracking-wider font-mono opacity-80">Soal</span>
-                      <span className="text-sm font-bold mt-0.5">{idx + 1}</span>
+                      <span className={`text-[8.5px] sm:text-[9.5px] font-extrabold uppercase tracking-widest font-mono ${isActive ? "text-white/80" : isAnswered ? "text-emerald-700" : "text-zinc-400"}`}>
+                        SOAL
+                      </span>
+                      <span className="text-sm sm:text-lg md:text-xl font-black mt-0.5 leading-none">{idx + 1}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-3xs text-zinc-400 leading-normal border-t border-white/5 pt-4">
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 border border-emerald-300 shadow-[0_0_6px_rgba(52,211,153,0.5)]" />
-                <span className="font-medium text-emerald-300">Sudah dijawab</span>
+            <div className="mt-2 shrink-0 flex flex-wrap items-center justify-between gap-3 text-2xs text-zinc-600 leading-normal pt-2 font-extrabold">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 border border-emerald-400" />
+                <span className="text-emerald-700">Sudah dijawab</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-violet-500 border border-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
-                <span className="font-medium text-violet-300">Sedang aktif</span>
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#5A77DF] border border-[#3E53A2]" />
+                <span className="text-[#5A77DF]">Sedang aktif</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-white/10 border border-white/20" />
-                <span className="font-medium text-zinc-400">Belum dijawab</span>
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-slate-200 border border-zinc-300" />
+                <span className="text-zinc-500">Belum dijawab</span>
               </div>
             </div>
           </div>

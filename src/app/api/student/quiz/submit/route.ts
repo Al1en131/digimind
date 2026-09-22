@@ -128,10 +128,12 @@ export async function POST(request: Request) {
         const mentalLevel = rawMentalLevel.slice(0, 250); // Ensure string does not exceed 255 chars
         const literacyLevel = "Beginner"; // Starting literacy level
 
+        const totalYesCount = yesCount1_20 + (yesQ21 ? 1 : 0) + yesCount22_24 + yesCount25_29;
+
         await tx.quizAttempt.update({
           where: { id: attempt.id },
           data: {
-            score: 100,
+            score: totalYesCount,
             completed_at: new Date()
           }
         });
@@ -163,7 +165,7 @@ export async function POST(request: Request) {
 
         return {
           isSubjectPretest: false,
-          score: 100,
+          score: totalYesCount,
           literacyLevel,
           mentalLevel,
           riskFlag,

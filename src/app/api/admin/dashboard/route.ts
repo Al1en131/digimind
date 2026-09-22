@@ -43,17 +43,15 @@ export async function GET() {
         orderBy: { created_at: "desc" },
       }),
       prisma.quiz.findMany({
-        where: {
-          OR: [
-            { subject_id: { not: null } },
-            { module: { subject_id: { not: null } } }
-          ]
-        },
         include: { module: true, questions: { include: { options: true } } },
         orderBy: { created_at: "desc" },
       }),
       prisma.user.findMany({
-        include: { admin: true, student: { include: { class: true } }, teacher: true },
+        include: {
+          admin: true,
+          student: { include: { class: true } },
+          teacher: { include: { class: true, subjects: true } }
+        },
         orderBy: { created_at: "desc" },
       }),
       prisma.mentalJournal.findMany({
@@ -115,7 +113,8 @@ export async function GET() {
       const mentalHealthProgress = mentalHealthModules.length > 0
         ? Math.round((completedMentalHealthModules / mentalHealthModules.length) * 100)
         : 0;
-      const riskFlag = Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7;
+      const isResolved = student.risk_flag === false;
+      const riskFlag = isResolved ? false : (Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7);
 
       return {
         id: student.id,
@@ -143,10 +142,36 @@ export async function GET() {
           if (u.admin?.permissions) {
             perms = JSON.parse(u.admin.permissions);
           } else {
-            perms = ["manage_users", "manage_teachers", "manage_academics", "manage_reports", "manage_roles"];
+            perms = [
+              "manage_users",
+              "manage_teachers",
+              "manage_academics",
+              "manage_reports",
+              "manage_roles",
+              "manage_classes",
+              "manage_subjects",
+              "manage_modules",
+              "manage_quizzes",
+              "manage_pretest_screening",
+              "manage_attempts",
+              "manage_screening"
+            ];
           }
         } catch {
-          perms = ["manage_users", "manage_teachers", "manage_academics", "manage_reports", "manage_roles"];
+          perms = [
+            "manage_users",
+            "manage_teachers",
+            "manage_academics",
+            "manage_reports",
+            "manage_roles",
+            "manage_classes",
+            "manage_subjects",
+            "manage_modules",
+            "manage_quizzes",
+            "manage_pretest_screening",
+            "manage_attempts",
+            "manage_screening"
+          ];
         }
 
         return {
@@ -195,12 +220,16 @@ export async function GET() {
         email: user.email,
         status: "Aktif",
         nis: user.student?.nis || "",
-        class_id: user.student?.class_id || "",
-        className: user.student?.class?.name || "",
+        class_id: user.student?.class_id || user.teacher?.class_id || "",
+        className: user.student?.class?.name || user.teacher?.class?.name || "",
         nip: user.teacher?.nip || "",
+        phone_number: user.teacher?.phone_number || "",
         teacher_type: user.teacher?.type || "subject",
         specialization: user.teacher?.specialization || "",
         position: user.teacher?.position || "",
+        division: user.admin?.division || "",
+        unit: user.admin?.unit || "",
+        subject_id: user.teacher?.subjects[0]?.id || "",
       })),
       journals: journals.map((journal) => ({
         id: journal.id,
@@ -239,28 +268,38 @@ export async function GET() {
             (!a.quiz?.subject_id || titleLower.includes("srq") || titleLower.includes("screening") || titleLower.includes("mental"))
           );
         })
-        .map((attempt) => ({
-          id: attempt.id,
-          studentName: attempt.student?.name || "-",
-          className: attempt.student?.class?.name || "-",
-          quizTitle: attempt.quiz?.title || "Self Reporting Questionnaire - 29 (SRQ-29)",
-          quizType: "SCREENING",
-          score: attempt.score || 0,
-          completedAt: attempt.completed_at
-            ? new Date(attempt.completed_at).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "-",
-          answers: attempt.answers.map((ans) => ({
-            question: ans.question?.question || "-",
-            selectedOption: ans.option?.option_text || "-",
-            isCorrect: !!ans.option?.is_correct,
-          })),
-        }))
+        .map((attempt) => {
+          const yesCountFromAnswers = attempt.answers.filter((ans) =>
+            ans.option?.option_text?.toUpperCase().includes("Y")
+          ).length;
+          const displayScore =
+            attempt.score === 100 && yesCountFromAnswers <= 29
+              ? yesCountFromAnswers
+              : attempt.score ?? yesCountFromAnswers;
+
+          return {
+            id: attempt.id,
+            studentName: attempt.student?.name || "-",
+            className: attempt.student?.class?.name || "-",
+            quizTitle: attempt.quiz?.title || "Self Reporting Questionnaire - 29 (SRQ-29)",
+            quizType: "SCREENING",
+            score: displayScore,
+            completedAt: attempt.completed_at
+              ? new Date(attempt.completed_at).toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "-",
+            answers: attempt.answers.map((ans) => ({
+              question: ans.question?.question || "-",
+              selectedOption: ans.option?.option_text || "-",
+              isCorrect: !!ans.option?.is_correct,
+            })),
+          };
+        })
     });
   } catch (error: any) {
     return NextResponse.json(
@@ -421,21 +460,32 @@ export async function POST(request: Request) {
               }
             });
           } else if (data.role === "teacher") {
-            await tx.guru.create({
+            const teacher = await tx.guru.create({
               data: {
                 user_id: user.id,
                 name: data.name,
                 nip: data.nip,
-                type: data.teacher_type,
-                specialization: data.specialization,
-                position: data.position
+                phone_number: data.phone_number || null,
+                type: data.teacher_type === "bk" ? "bk" : data.teacher_type === "wali_kelas" ? "wali_kelas" : "subject",
+                class_id: data.class_id ? parseInt(data.class_id) : null,
+                specialization: data.specialization || null,
+                position: data.position || (data.teacher_type === "bk" ? "Guru Bimbingan Konseling" : data.teacher_type === "wali_kelas" ? "Wali Kelas" : "Guru Mata Pelajaran")
               }
             });
+
+            if (data.teacher_type === "subject" && data.subject_id) {
+              await tx.subject.update({
+                where: { id: parseInt(data.subject_id) },
+                data: { teacher_id: teacher.id }
+              });
+            }
           } else if (data.role === "admin") {
             await tx.admin.create({
               data: {
                 user_id: user.id,
-                name: data.name
+                name: data.name,
+                division: data.division || null,
+                unit: data.unit || null
               }
             });
           }
@@ -461,23 +511,63 @@ export async function POST(request: Request) {
           });
 
           if (data.role === "student") {
-            await tx.siswa.update({
+            await tx.siswa.upsert({
               where: { user_id: parseInt(data.id) },
-              data: {
+              update: {
+                name: data.name,
+                nis: data.nis,
+                class_id: parseInt(data.class_id)
+              },
+              create: {
+                user_id: parseInt(data.id),
                 name: data.name,
                 nis: data.nis,
                 class_id: parseInt(data.class_id)
               }
             });
           } else if (data.role === "teacher") {
-            await tx.guru.update({
+            const teacher = await tx.guru.upsert({
               where: { user_id: parseInt(data.id) },
-              data: {
+              update: {
                 name: data.name,
                 nip: data.nip,
-                type: data.teacher_type,
-                specialization: data.specialization,
-                position: data.position
+                phone_number: data.phone_number || null,
+                type: data.teacher_type === "bk" ? "bk" : data.teacher_type === "wali_kelas" ? "wali_kelas" : "subject",
+                class_id: data.class_id ? parseInt(data.class_id) : null,
+                specialization: data.specialization || null,
+                position: data.position || null
+              },
+              create: {
+                user_id: parseInt(data.id),
+                name: data.name,
+                nip: data.nip,
+                phone_number: data.phone_number || null,
+                type: data.teacher_type === "bk" ? "bk" : data.teacher_type === "wali_kelas" ? "wali_kelas" : "subject",
+                class_id: data.class_id ? parseInt(data.class_id) : null,
+                specialization: data.specialization || null,
+                position: data.position || null
+              }
+            });
+
+            if (data.teacher_type === "subject" && data.subject_id) {
+              await tx.subject.update({
+                where: { id: parseInt(data.subject_id) },
+                data: { teacher_id: teacher.id }
+              });
+            }
+          } else if (data.role === "admin") {
+            await tx.admin.upsert({
+              where: { user_id: parseInt(data.id) },
+              update: {
+                name: data.name,
+                division: data.division || null,
+                unit: data.unit || null
+              },
+              create: {
+                user_id: parseInt(data.id),
+                name: data.name,
+                division: data.division || null,
+                unit: data.unit || null
               }
             });
           }
@@ -498,7 +588,8 @@ export async function POST(request: Request) {
         const cls = await prisma.schoolClass.create({
           data: {
             name: data.name,
-            major: data.major || "Umum"
+            major: data.major || "Umum",
+            academic_year: data.academic_year || data.year || "2025/2026"
           }
         });
         return NextResponse.json({ success: true, message: "Kelas berhasil ditambahkan!", class: cls });
@@ -508,7 +599,8 @@ export async function POST(request: Request) {
           where: { id: parseInt(data.id) },
           data: {
             name: data.name,
-            major: data.major
+            major: data.major,
+            academic_year: data.academic_year || data.year || undefined
           }
         });
         return NextResponse.json({ success: true, message: "Kelas berhasil diperbarui!", class: cls });
@@ -521,12 +613,16 @@ export async function POST(request: Request) {
 
     // CRUD: SUBJECT
     if (entity === "subject") {
+      const parsedTeacherId = (data.teacher_id && !isNaN(parseInt(data.teacher_id)) && parseInt(data.teacher_id) > 0)
+        ? parseInt(data.teacher_id)
+        : null;
+
       if (action === "create") {
         const sub = await prisma.subject.create({
           data: {
             name: data.name,
             class_id: parseInt(data.class_id),
-            teacher_id: data.teacher_id ? parseInt(data.teacher_id) : null
+            teacher_id: parsedTeacherId
           }
         });
         return NextResponse.json({ success: true, message: "Mata pelajaran berhasil ditambahkan!", subject: sub });
@@ -537,7 +633,7 @@ export async function POST(request: Request) {
           data: {
             name: data.name,
             class_id: parseInt(data.class_id),
-            teacher_id: data.teacher_id ? parseInt(data.teacher_id) : null
+            teacher_id: parsedTeacherId
           }
         });
         return NextResponse.json({ success: true, message: "Mata pelajaran berhasil diperbarui!", subject: sub });

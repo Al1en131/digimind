@@ -4,6 +4,14 @@ import { prisma } from "@/lib/db";
 import { verifyJWT } from "@/lib/auth-utils";
 import { encryptSensitiveText, decryptSensitiveText } from "@/lib/encryption";
 
+function formatAcademicYear(dateInput: Date | string | null | undefined, explicitYear?: string | null): string {
+  if (explicitYear && explicitYear.trim()) return explicitYear.trim();
+  if (!dateInput) return "2025/2026";
+  const d = new Date(dateInput);
+  const year = isNaN(d.getFullYear()) ? 2025 : d.getFullYear();
+  return `${year}/${year + 1}`;
+}
+
 function parseScreenTime(activities: string | null | undefined): number {
   if (!activities) return 0;
 
@@ -90,6 +98,7 @@ export async function GET() {
         where: teacher.class_id ? { class_id: teacher.class_id } : undefined,
         include: {
           class: true,
+          subject_levels: true,
           mental_journals: {
             orderBy: { logged_at: "desc" },
             take: 5,
@@ -134,12 +143,19 @@ export async function GET() {
         ? [teacher.class_id]
         : Array.from(new Set(teacherSubjects.map(s => s.class_id)));
 
+      const teacherSubjectIdsList = teacherSubjects.map(s => s.id);
+
       students = await prisma.siswa.findMany({
         where: {
-          class_id: { in: classIds }
+          OR: [
+            { class_id: { in: classIds } },
+            { quiz_attempts: { some: { quiz: { subject_id: { in: teacherSubjectIdsList } } } } },
+            { completed_modules: { some: { module: { subject_id: { in: teacherSubjectIdsList } } } } }
+          ]
         },
         include: {
           class: true,
+          subject_levels: true,
           mental_journals: {
             orderBy: { logged_at: "desc" },
             take: 5,
@@ -186,7 +202,7 @@ export async function GET() {
 
     const mentalHealthModules = mentalHealthCategory?.id
       ? await prisma.module.findMany({
-          where: { category_id: mentalHealthCategory.id },
+          where: { category_id: mentalHealthCategory.id, subject_id: null },
           select: { id: true },
         })
       : [];
@@ -207,9 +223,10 @@ export async function GET() {
 
     const literacyModuleIds = new Set(literacyModules.map((module) => module.id));
 
-    // Fetch all modules with subject details for detailed student progress
+    // Fetch all modules with subject and level details for detailed student progress
     const allModulesWithSubject = await prisma.module.findMany({
       include: {
+        level: true,
         subject: {
           include: { class: true }
         }
@@ -248,16 +265,50 @@ export async function GET() {
         ? Math.round((completedLiteracyModules / literacyModules.length) * 100)
         : 0;
 
-      // 3. Subject Modules progress (Filtered ONLY for teacher's subject(s) in this student's class)
+      // Get student placement level for teacher's subject
+      let rawStudentLevelName = "";
+      if (student.subject_levels && student.subject_levels.length > 0) {
+        const teacherSubjLevel = student.subject_levels.find((sl: any) => teacherSubjectIdsSet.has(sl.subject_id));
+        if (teacherSubjLevel) {
+          rawStudentLevelName = teacherSubjLevel.level_name;
+        } else {
+          rawStudentLevelName = student.subject_levels[0].level_name;
+        }
+      }
+
+      const targetLevelStr = rawStudentLevelName.trim().toLowerCase();
+      
+      let levelNameDisplay = "Basic";
+      if (targetLevelStr.startsWith("advan")) levelNameDisplay = "Advanced";
+      else if (targetLevelStr.startsWith("intermed")) levelNameDisplay = "Intermediate";
+      else if (targetLevelStr.startsWith("basic") || targetLevelStr.startsWith("beginner")) levelNameDisplay = "Basic";
+      else if (rawStudentLevelName) levelNameDisplay = rawStudentLevelName;
+
+      // 3. Subject Modules progress (Filtered ONLY for teacher's subject(s) AND student's placed level)
       const moduleProgressesList = allModulesWithSubject
         .filter((mod) => {
-          if (teacher.type === "bk") {
-            return mod.subject?.class_id === student.class_id;
+          const matchesSubject = teacher.type === "bk"
+            ? mod.subject?.class_id === student.class_id
+            : teacherSubjectIdsSet.size > 0
+            ? mod.subject_id ? teacherSubjectIdsSet.has(mod.subject_id) && mod.subject?.class_id === student.class_id : false
+            : mod.subject ? mod.subject.class_id === student.class_id : false;
+
+          if (!matchesSubject) return false;
+
+          // Filter by student's placed level if student has completed placement pretest
+          if (targetLevelStr && targetLevelStr !== "belum pretest") {
+            if (!mod.level || !mod.level.name) return false;
+            const modLevelStr = mod.level.name.trim().toLowerCase();
+            const isLevelMatch = modLevelStr === targetLevelStr ||
+              (targetLevelStr.startsWith("advan") && modLevelStr.startsWith("advan")) ||
+              (targetLevelStr.startsWith("intermed") && modLevelStr.startsWith("intermed")) ||
+              (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("basic")) ||
+              (targetLevelStr.startsWith("beginner") && modLevelStr.startsWith("basic")) ||
+              (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("beginner"));
+            return isLevelMatch;
           }
-          if (teacherSubjectIdsSet.size > 0) {
-            return mod.subject_id ? teacherSubjectIdsSet.has(mod.subject_id) && mod.subject?.class_id === student.class_id : false;
-          }
-          return mod.subject ? mod.subject.class_id === student.class_id : false;
+
+          return true;
         })
         .map((mod) => {
           const isCompleted = student.completed_modules.some((c) => c.module_id === mod.id);
@@ -361,7 +412,8 @@ export async function GET() {
         });
       const posttests = Array.from(latestPosttestsMap.values());
 
-      const riskFlag = Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7;
+      const isResolved = student.risk_flag === false;
+      const riskFlag = isResolved ? false : (Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7);
       const mentalStatus = student.mental_level || (riskFlag ? "Perlu Pendampingan" : averageMood >= 4 ? "Baik" : averageMood === 3 ? "Waspada" : "Perlu Pendampingan");
 
       return {
@@ -370,6 +422,7 @@ export async function GET() {
         name: student.name,
         classId: student.class_id,
         className: student.class.name,
+        levelName: levelNameDisplay,
         literacyProgress,
         mentalHealthProgress,
         subjectProgress,
@@ -452,30 +505,43 @@ export async function GET() {
           id: teacher.class.id,
           name: teacher.class.name,
           major: teacher.class.major,
+          year: formatAcademicYear(teacher.class.created_at, teacher.class.academic_year),
+          displayName: `${teacher.class.name} (${teacher.class.major}) • TA ${formatAcademicYear(teacher.class.created_at, teacher.class.academic_year)}`
         } : null,
-        subjects: teacherSubjects.map((s) => ({
-          id: s.id,
-          name: s.name,
-          classId: s.class_id,
-          className: s.class.name,
-          classMajor: s.class.major,
-          assignedTeacher: s.teacher
-            ? {
-                id: s.teacher.id,
-                name: s.teacher.name,
-                nip: s.teacher.nip || "-",
-                specialization: s.teacher.specialization || "-",
-                position: s.teacher.position || "-",
-                phone_number: s.teacher.phone_number || "-",
-                email: s.teacher.user?.email || "-",
-              }
-            : null,
-        })),
-        classes: teacherClassesList.map((c) => ({
-          id: c.id,
-          name: c.name,
-          major: c.major,
-        })),
+        subjects: teacherSubjects.map((s) => {
+          const classYear = formatAcademicYear(s.class.created_at, s.class.academic_year);
+          return {
+            id: s.id,
+            name: s.name,
+            classId: s.class_id,
+            className: s.class.name,
+            classMajor: s.class.major,
+            classYear,
+            displayName: `${s.name} - ${s.class.name} ${s.class.major ? `(${s.class.major})` : ""} (${classYear})`,
+            assignedTeacher: s.teacher
+              ? {
+                  id: s.teacher.id,
+                  name: s.teacher.name,
+                  nip: s.teacher.nip || "-",
+                  specialization: s.teacher.specialization || "-",
+                  position: s.teacher.position || "-",
+                  phone_number: s.teacher.phone_number || "-",
+                  email: s.teacher.user?.email || "-",
+                }
+              : null,
+          };
+        }),
+        classes: teacherClassesList.map((c) => {
+          const classYear = formatAcademicYear(c.created_at, c.academic_year);
+          return {
+            id: c.id,
+            name: c.name,
+            major: c.major,
+            year: classYear,
+            academicYear: `TA ${classYear}`,
+            displayName: `${c.name} (${c.major}) • ${classYear}`
+          };
+        }),
       },
       classSummary: {
         totalStudents: students.length,

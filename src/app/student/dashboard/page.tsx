@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
+import StudentModuleDetailView from "@/components/StudentModuleDetailView";
 import { 
   Home, 
   ClipboardList, 
@@ -35,13 +36,16 @@ import {
   EyeOff,
   Key,
   Zap,
-  Play
+  Play,
+  ChevronDown
 } from "lucide-react";
 
 interface SchoolClassItem {
   id: number;
   name: string;
   major: string | null;
+  displayName?: string;
+  isCurrent?: boolean;
 }
 
 interface Student {
@@ -50,6 +54,10 @@ interface Student {
   username: string;
   nis: string;
   class_id?: number;
+  class_name?: string;
+  class_major?: string;
+  year?: string;
+  academicYear?: string;
   class: string;
   avatar: string | null;
   literacy_level: string;
@@ -74,6 +82,9 @@ interface Module {
 interface Subject {
   id: number;
   name: string;
+  class_id?: number;
+  className?: string;
+  isCurrentClass?: boolean;
   teacher?: { name: string } | null;
   pretestQuizId?: number | null;
   hasPretest: boolean;
@@ -126,6 +137,7 @@ interface DashboardData {
   success: boolean;
   student: Student;
   allClasses?: SchoolClassItem[];
+  availableClasses?: SchoolClassItem[];
   monthlyScreening?: MonthlyScreeningInfo;
   modules: Module[];
   completedModuleIds: number[];
@@ -231,6 +243,15 @@ const MOOD_EMOJIS = [
   { score: 5, char: "😄", label: "Sangat Baik", color: "text-emerald-600", icon: <MoodSvgSangatBaik className="w-8 h-8 drop-shadow-xs" />, smIcon: <MoodSvgSangatBaik className="w-6 h-6" />, lgIcon: <MoodSvgSangatBaik className="w-12 h-12 md:w-14 md:h-14 drop-shadow-md" /> },
 ];
 
+const stripHtmlTags = (str: string | undefined | null): string => {
+  if (!str) return "";
+  return str
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[a-z0-9]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
 const indonesianMonths = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
   "Juli", "Agustus", "September", "Oktober", "November", "Desember"
@@ -251,6 +272,24 @@ const NAV_ITEMS: { id: DashboardTab; label: string; icon: React.ReactNode }[] = 
 export default function StudentDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<DashboardTab>("home");
+  const [activeModuleId, setActiveModuleId] = useState<number | null>(null);
+  const [selectedModulClassId, setSelectedModulClassId] = useState<number | null>(null);
+  const [isModulSubmenuOpen, setIsModulSubmenuOpen] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const modParam = params.get("module");
+      if (modParam && !isNaN(parseInt(modParam))) {
+        setActiveModuleId(parseInt(modParam));
+      } else {
+        const tabParam = params.get("tab");
+        if (tabParam && NAV_ITEMS.some((item) => item.id === tabParam)) {
+          setActiveTab(tabParam as DashboardTab);
+        }
+      }
+    }
+  }, []);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -489,6 +528,9 @@ export default function StudentDashboard() {
         }
         setData(json);
         setError(null);
+        if (json.student?.class_id) {
+          setSelectedModulClassId(prev => prev ?? json.student.class_id);
+        }
       } else {
         setError(json.message || "Gagal memuat data dashboard.");
         if (res.status === 401) {
@@ -809,18 +851,19 @@ export default function StudentDashboard() {
     };
   });
 
-  // Helper calculations for Home tab cards
+  // Helper calculations for Home tab cards (strictly scoped to student's current class)
+  const currentClassSubjects = (subjects || []).filter(
+    (sub: any) => sub.class_id === student?.class_id || sub.isCurrentClass
+  );
+
   const allAccessibleModules: any[] = [];
-  (subjects || []).forEach((sub: any) => {
-    // Only include subject modules if pretest has been taken OR if no pretest required
-    if (sub.hasPretest || !sub.pretestQuizId) {
-      if (sub.modules && Array.isArray(sub.modules)) {
-        sub.modules.forEach((mod: any) => {
-          if (!allAccessibleModules.some((m) => m.id === mod.id)) {
-            allAccessibleModules.push({ ...mod, subjectName: sub.name });
-          }
-        });
-      }
+  currentClassSubjects.forEach((sub: any) => {
+    if (sub.modules && Array.isArray(sub.modules)) {
+      sub.modules.forEach((mod: any) => {
+        if (!allAccessibleModules.some((m) => m.id === mod.id)) {
+          allAccessibleModules.push({ ...mod, subjectName: sub.name });
+        }
+      });
     }
   });
 
@@ -887,15 +930,16 @@ export default function StudentDashboard() {
   const activeNotifications = dynamicNotifications.filter(n => !dismissedNotifIds.includes(n.id));
 
   return (
-    <div className="student-dashboard-page relative flex min-h-screen flex-col bg-white text-zinc-900 font-sans pb-24 md:pb-8 w-full max-w-full overflow-x-hidden">
+    <div className="student-dashboard-page relative flex min-h-screen flex-col bg-white text-zinc-900 font-sans pb-24 md:pb-8 w-full">
       {/* Decorative Orbs - Clipped */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute top-0 left-1/4 h-[500px] w-[500px] rounded-full bg-[#5A77DF]/5 blur-[120px]" />
         <div className="absolute bottom-0 right-1/4 h-[500px] w-[500px] rounded-full bg-[#3E53A2]/5 blur-[120px]" />
       </div>
 
-      {/* TOP NAVBAR */}
-      <header className="sticky top-0 z-50 w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between border-b border-zinc-200/80 bg-white/90 backdrop-blur-md">
+      {/* TOP NAVBAR (STICKY ON MOBILE & DESKTOP) */}
+      <header className="sticky top-0 z-50 w-full border-b border-zinc-200/80 bg-white/95 backdrop-blur-md shadow-xs">
+        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2 shrink-0">
           <img src="/logo.png" alt="DigiMind" className="h-9 sm:h-12 w-auto max-w-[130px] sm:max-w-none object-contain" />
         </div>
@@ -1015,6 +1059,7 @@ export default function StudentDashboard() {
             )}
           </div>
         </div>
+      </div>
       </header>
 
       {/* MAIN CONTAINER */}
@@ -1027,33 +1072,98 @@ export default function StudentDashboard() {
                 <p className="text-2xs font-extrabold uppercase tracking-[0.25em] text-white/70 font-mono">Menu</p>
                 <h3 className="text-sm font-black text-white">Dashboard</h3>
               </div>
-              {NAV_ITEMS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
-                    activeTab === item.id
-                      ? "border-white bg-white text-[#3E53A2] shadow-md"
-                      : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
-                  }`}
-                >
-                  <span className="shrink-0">{item.icon}</span>
-                  <span>{item.label}</span>
-                </button>
-              ))}
+              {NAV_ITEMS.map((item) => {
+                const isItemActive = activeTab === item.id && activeModuleId === null;
+                const isModulItem = item.id === "modul";
+                const availableClasses = data?.availableClasses || [];
+                const currentClassId = selectedModulClassId || student.class_id;
+
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveModuleId(null);
+                        if (isModulItem) {
+                          if (activeTab === "modul") {
+                            setIsModulSubmenuOpen(prev => !prev);
+                          } else {
+                            setActiveTab("modul");
+                            setIsModulSubmenuOpen(true);
+                            if (!selectedModulClassId && student.class_id) {
+                              setSelectedModulClassId(student.class_id);
+                            }
+                          }
+                        } else {
+                          setActiveTab(item.id);
+                        }
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
+                        isItemActive
+                          ? "border-white bg-white text-[#3E53A2] shadow-md"
+                          : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="shrink-0">{item.icon}</span>
+                        <span>{item.label}</span>
+                      </div>
+                      {isModulItem && availableClasses.length > 0 && (
+                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isModulSubmenuOpen && activeTab === "modul" ? "rotate-180" : ""}`} />
+                      )}
+                    </button>
+
+                    {/* Submenu for Modul item in Sidebar */}
+                    {isModulItem && availableClasses.length > 0 && isModulSubmenuOpen && activeTab === "modul" && (
+                      <div className="ml-3 pl-2.5 border-l-2 border-white/25 my-1 space-y-1 animate-fadeIn">
+                        {availableClasses.map((cls) => {
+                          const isSubActive = activeTab === "modul" && currentClassId === cls.id && activeModuleId === null;
+                          const isCurrentClass = cls.id === student.class_id;
+
+                          return (
+                            <button
+                              key={cls.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveModuleId(null);
+                                setSelectedModulClassId(cls.id);
+                                setActiveTab("modul");
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs font-extrabold transition cursor-pointer ${
+                                isSubActive
+                                  ? "bg-[#5A77DF]/20 text-white shadow-xs font-black ring-1 ring-white/30"
+                                  : "text-white/80 hover:bg-white/15 hover:text-white"
+                              }`}
+                            >
+                              <span className="truncate">🏫 {cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}</span>
+                              {isCurrentClass && (
+                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-mono font-black uppercase ${
+                                  isSubActive ? "bg-white text-[#3E53A2]" : "bg-white/20 text-white"
+                                }`}>
+                                  Aktif
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </aside>
 
           {/* MOBILE BOTTOM NAVIGATION BAR (Fixed at bottom on mobile/tablet screens) */}
           <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-zinc-200/90 shadow-2xl px-1 py-1.5 flex items-center justify-around">
             {NAV_ITEMS.map((item) => {
-              const isActive = activeTab === item.id;
+              const isActive = activeTab === item.id && activeModuleId === null;
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => {
+                    setActiveModuleId(null);
                     setActiveTab(item.id);
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
@@ -1074,8 +1184,18 @@ export default function StudentDashboard() {
 
           <div className="flex-1 min-w-0 w-full">
             <main className="w-full">
-              {/* TAB 1: HOME */}
-              {activeTab === "home" && (
+              {activeModuleId !== null ? (
+                <StudentModuleDetailView
+                  moduleId={activeModuleId}
+                  onBack={() => {
+                    setActiveModuleId(null);
+                    fetchDashboardData();
+                  }}
+                />
+              ) : (
+                <>
+                  {/* TAB 1: HOME */}
+                  {activeTab === "home" && (
                 <div className="space-y-6 animate-fadeIn">
                   {/* Hero Banner Blue Card */}
                   <div className="relative rounded-3xl bg-gradient-to-r from-[#5A77DF] via-[#4A64CA] to-[#3E53A2] p-6 sm:p-8 text-white shadow-xl">
@@ -1106,7 +1226,7 @@ export default function StudentDashboard() {
                           </div>
                           <div className="rounded-xl bg-white/20 backdrop-blur-md border border-white/25 px-3 py-1.5 text-3xs font-extrabold text-white flex items-center gap-2">
                             <GraduationCap className="w-3.5 h-3.5 text-amber-300" />
-                            <span>Kelas {student.class}</span>
+                            <span>Kelas {student.class_name || student.class} {student.class_major ? `(${student.class_major})` : ""} {student.academicYear ? `• ${student.academicYear}` : ""}</span>
                           </div>
                         </div>
                       </div>
@@ -1382,7 +1502,13 @@ export default function StudentDashboard() {
                     {recommendedModules.length === 0 ? (
                       <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-center text-xs text-[#3E53A2] font-medium flex items-center justify-center gap-2">
                         <Sparkles className="w-4 h-4 text-[#5A77DF] shrink-0" />
-                        <span>Selamat! Semua modul pembelajaran pada level Anda telah selesai dikerjakan.</span>
+                        {totalAccessibleCount === 0 ? (
+                          <span>Belum ada modul pembelajaran yang tersedia.</span>
+                        ) : completedAccessibleCount >= totalAccessibleCount ? (
+                          <span>Selamat! Semua modul pembelajaran pada level Anda telah selesai dikerjakan.</span>
+                        ) : (
+                          <span>Selesaikan pretest mata pelajaran terlebih dahulu untuk membuka modul pembelajaran.</span>
+                        )}
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1393,7 +1519,7 @@ export default function StudentDashboard() {
                               <div className="space-y-1.5">
                                 <span className="text-[9px] uppercase tracking-wider text-[#5A77DF] font-extrabold font-mono">{mod.subjectName}</span>
                                 <h4 className="text-xs font-bold text-zinc-900 line-clamp-1">{mod.title}</h4>
-                                <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{mod.content}</p>
+                                <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{stripHtmlTags(mod.content)}</p>
                               </div>
 
                               <div className="space-y-2 pt-2 border-t border-zinc-200">
@@ -1406,7 +1532,7 @@ export default function StudentDashboard() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => router.push(`/student/module/${mod.id}`)}
+                                  onClick={() => setActiveModuleId(mod.id)}
                                   className="w-full rounded-lg bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-3xs font-extrabold py-2 transition text-center cursor-pointer mt-1 shadow-2xs"
                                 >
                                   {prog > 0 ? "Lanjutkan Belajar" : "Pelajari Modul"}
@@ -1567,144 +1693,174 @@ export default function StudentDashboard() {
                 </div>
               )}
 
-              {/* TAB 2: MODUL (CONSOLIDATED) */}
-              {activeTab === "modul" && (
-                <div className="space-y-6 animate-fadeIn">
-                  {/* Top Header Card */}
-                  <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-2">
-                    <h2 className="text-xl font-black text-zinc-900 tracking-tight">
-                      Modul Pembelajaran Sekolah
-                    </h2>
-                    <p className="text-xs text-zinc-600 leading-relaxed max-w-3xl">
-                      Pilih Mata Pelajaran di bawah ini. Ikuti Pretest Mapel terlebih dahulu untuk menentukan level penempatan belajar Anda pada masing-masing mata pelajaran.
-                    </p>
-                  </div>
+              {/* TAB 2: MODUL (CONSOLIDATED WITH CLASS SUB-MENU) */}
+              {activeTab === "modul" && (() => {
+                const availableClasses = data?.availableClasses || [];
+                const currentClassId = selectedModulClassId || student.class_id;
 
-                  {subjects.length === 0 ? (
-                    <div className="text-center py-12 rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
-                      <p className="text-xs text-zinc-500 italic">Belum ada mata pelajaran terdaftar.</p>
+                // Filter subjects for selected class
+                const filteredSubjects = subjects.filter((s) => s.class_id === currentClassId);
+
+                return (
+                  <div className="space-y-6 animate-fadeIn">
+                    {/* Top Header Card */}
+                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h2 className="text-xl font-black text-zinc-900 tracking-tight">
+                            Modul Pembelajaran Sekolah
+                          </h2>
+                          <p className="text-xs text-zinc-600 leading-relaxed max-w-3xl mt-1 font-medium">
+                            Pilih mata pelajaran di bawah ini. Materi dari kelas terdahulu tetap tersimpan dan dapat diakses melalui sub-menu kelas di sidebar sebelah kiri.
+                          </p>
+                        </div>
+                        {(() => {
+                          const activeClassObj = availableClasses.find(c => c.id === currentClassId);
+                          const isCurrent = currentClassId === student.class_id;
+                          return (
+                            <div className="shrink-0 px-4 py-2 rounded-2xl bg-[#5A77DF]/10 border border-[#5A77DF]/30 text-left sm:text-right">
+                              <span className="text-[10px] font-mono font-black text-[#5A77DF] uppercase tracking-wider block">Sub-Menu Kelas Aktif</span>
+                              <span className="text-sm font-black text-[#3E53A2] flex items-center gap-1.5 mt-0.5">
+                                🏫 {activeClassObj ? (activeClassObj.displayName || (activeClassObj.major ? `${activeClassObj.name} ${activeClassObj.major}` : activeClassObj.name)) : `Kelas ${currentClassId}`}
+                                {isCurrent && (
+                                  <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase bg-[#5A77DF] text-white">
+                                    Aktif
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="grid gap-6">
-                      {subjects.map((sub) => (
-                        <div key={sub.id} className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-5">
-                          {/* Subject Header */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
-                            <div>
-                              <div className="flex items-center gap-3">
-                                <h3 className="text-lg font-black text-zinc-900">{sub.name}</h3>
-                                <span className="text-3xs px-3 py-1 rounded-full font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30">
-                                  Level: {sub.level}
-                                </span>
+
+                    {filteredSubjects.length === 0 ? (
+                      <div className="text-center py-12 rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
+                        <p className="text-xs text-zinc-500 italic">Belum ada mata pelajaran terdaftar untuk kelas ini.</p>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6">
+                        {filteredSubjects.map((sub) => (
+                          <div key={sub.id} className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-5">
+                            {/* Subject Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+                              <div>
+                                <div className="flex items-center gap-3">
+                                  <h3 className="text-lg font-black text-zinc-900">{sub.name}</h3>
+                                  <span className="text-3xs px-3 py-1 rounded-full font-extrabold uppercase bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30">
+                                    Level: {sub.level}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-zinc-600 mt-1 font-medium">
+                                  Guru Pengampu: <strong className="text-zinc-800">{sub.teacher?.name || "Belum ditentukan"}</strong>
+                                </p>
                               </div>
-                              <p className="text-xs text-zinc-600 mt-1 font-medium">
-                                Guru Pengampu: <strong className="text-zinc-800">{sub.teacher?.name || "Belum ditentukan"}</strong>
-                              </p>
+
+                              {/* Pretest CTA or Status */}
+                              {!sub.hasPretest ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenSubjectPretest(sub)}
+                                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition duration-200 shrink-0 cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  <span>Ikuti Pretest Mapel (10-15 Soal)</span>
+                                </button>
+                              ) : (
+                                <span className="rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-3.5 py-1.5 text-3xs font-extrabold text-[#3E53A2] uppercase shrink-0 inline-flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Pretest Mapel Selesai ({sub.modules.length} Modul)
+                                </span>
+                              )}
                             </div>
 
-                            {/* Pretest CTA or Status */}
+                            {/* Subject Modules List */}
                             {!sub.hasPretest ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenSubjectPretest(sub)}
-                                className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2.5 text-xs font-extrabold text-white shadow-md transition duration-200 shrink-0 cursor-pointer flex items-center gap-1.5"
-                              >
-                                <Play className="w-3.5 h-3.5 fill-current" />
-                                <span>Ikuti Pretest Mapel (10-15 Soal)</span>
-                              </button>
+                              <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-center text-xs text-[#3E53A2] font-semibold space-y-1">
+                                <p className="flex items-center justify-center gap-1.5">
+                                  <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+                                  <span>Selesaikan <strong className="text-[#5A77DF]">Pretest Penempatan Level</strong> untuk membuka materi modul mata pelajaran <strong className="text-zinc-900">{sub.name}</strong>.</span>
+                                </p>
+                              </div>
+                            ) : sub.modules.length === 0 ? (
+                              <p className="text-xs text-zinc-500 italic py-2">Belum ada modul yang disiapkan untuk level {sub.level}.</p>
                             ) : (
-                              <span className="rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-3.5 py-1.5 text-3xs font-extrabold text-[#3E53A2] uppercase shrink-0 inline-flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" /> Pretest Mapel Selesai ({sub.modules.length} Modul)
-                              </span>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                                {sub.modules.map((mod) => {
+                                  const isDone = completedModuleIds.includes(mod.id);
+                                  const modProgress = getModuleProgress(mod.id);
+
+                                  return (
+                                    <div
+                                      key={mod.id}
+                                      className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 flex flex-col justify-between gap-4 hover:border-[#5A77DF] transition shadow-xs"
+                                    >
+                                      <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <h4 className="font-extrabold text-xs text-zinc-900 truncate">{mod.title}</h4>
+                                          {isDone ? (
+                                            <span className="text-[9px] font-extrabold text-[#3E53A2] bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                              <CheckCircle2 className="w-2.5 h-2.5 text-[#5A77DF]" /> Selesai
+                                            </span>
+                                          ) : modProgress > 0 ? (
+                                            <span className="text-[9px] font-extrabold text-amber-600 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
+                                              <Zap className="w-2.5 h-2.5 text-amber-500" /> {modProgress}%
+                                            </span>
+                                          ) : (
+                                            <span className="text-[9px] font-extrabold text-zinc-500 bg-zinc-100 px-2.5 py-0.5 rounded-full uppercase">
+                                              0%
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{stripHtmlTags(mod.content)}</p>
+                                      </div>
+
+                                      {/* Progress Bar */}
+                                      <div className="space-y-1">
+                                        <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-500 ${
+                                              isDone ? "bg-[#5A77DF]" : modProgress > 0 ? "bg-amber-400" : "bg-[#5A77DF] opacity-30"
+                                            }`}
+                                            style={{ width: `${modProgress}%` }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveModuleId(mod.id)}
+                                        className="w-full rounded-xl py-2.5 text-xs font-extrabold transition text-center cursor-pointer bg-[#5A77DF] hover:bg-[#3E53A2] text-white shadow-xs"
+                                      >
+                                        {isDone ? "Tinjau Modul" : modProgress > 0 ? "Lanjutkan Belajar" : "Pelajari Modul"}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             )}
                           </div>
-
-                          {/* Subject Modules List */}
-                          {!sub.hasPretest ? (
-                            <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 text-center text-xs text-[#3E53A2] font-semibold space-y-1">
-                              <p className="flex items-center justify-center gap-1.5">
-                                <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-                                <span>Selesaikan <strong className="text-[#5A77DF]">Pretest Penempatan Level</strong> untuk membuka materi modul mata pelajaran <strong className="text-zinc-900">{sub.name}</strong>.</span>
-                              </p>
-                            </div>
-                          ) : sub.modules.length === 0 ? (
-                            <p className="text-xs text-zinc-500 italic py-2">Belum ada modul yang disiapkan untuk level {sub.level}.</p>
-                          ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                              {sub.modules.map((mod) => {
-                                const isDone = completedModuleIds.includes(mod.id);
-                                const modProgress = getModuleProgress(mod.id);
-
-                                return (
-                                  <div
-                                    key={mod.id}
-                                    className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 flex flex-col justify-between gap-4 hover:border-[#5A77DF] transition shadow-xs"
-                                  >
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <h4 className="font-extrabold text-xs text-zinc-900 truncate">{mod.title}</h4>
-                                        {isDone ? (
-                                          <span className="text-[9px] font-extrabold text-[#3E53A2] bg-[#5A77DF]/10 border border-[#5A77DF]/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
-                                            <CheckCircle2 className="w-2.5 h-2.5 text-[#5A77DF]" /> Selesai
-                                          </span>
-                                        ) : modProgress > 0 ? (
-                                          <span className="text-[9px] font-extrabold text-amber-600 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase inline-flex items-center gap-1">
-                                            <Zap className="w-2.5 h-2.5 text-amber-500" /> {modProgress}%
-                                          </span>
-                                        ) : (
-                                          <span className="text-[9px] font-extrabold text-zinc-500 bg-zinc-100 px-2.5 py-0.5 rounded-full uppercase">
-                                            0%
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-3xs text-zinc-600 line-clamp-2 leading-relaxed">{mod.content}</p>
-                                    </div>
-
-                                    {/* Progress Bar */}
-                                    <div className="space-y-1">
-                                      <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden">
-                                        <div
-                                          className={`h-full rounded-full transition-all duration-500 ${
-                                            isDone ? "bg-[#5A77DF]" : modProgress > 0 ? "bg-amber-400" : "bg-[#5A77DF] opacity-30"
-                                          }`}
-                                          style={{ width: `${modProgress}%` }}
-                                        />
-                                      </div>
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => router.push(`/student/module/${mod.id}`)}
-                                      className="w-full rounded-xl py-2.5 text-xs font-extrabold transition text-center cursor-pointer bg-[#5A77DF] hover:bg-[#3E53A2] text-white shadow-xs"
-                                    >
-                                      {isDone ? "Tinjau Modul" : modProgress > 0 ? "Lanjutkan Belajar" : "Pelajari Modul"}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* TAB 3: JURNAL */}
               {activeTab === "jurnal" && (
                 <div className="space-y-6 animate-fadeIn">
-                  <div className="flex flex-col gap-2">
-                    <h2 className="text-xl font-extrabold tracking-tight">Jurnal Refleksi Harian</h2>
-                    <p className="text-2xs text-zinc-400">Pilih tanggal pada kalender di bawah ini untuk mengisi jurnal refleksi harian atau melihat riwayat jurnal.</p>
+                  <div className="flex flex-col gap-1.5">
+                    <h2 className="text-xl font-extrabold tracking-tight text-zinc-900">Jurnal Refleksi Harian</h2>
+                    <p className="text-2xs text-zinc-500 font-medium">Pilih tanggal pada kalender di bawah ini untuk mengisi jurnal refleksi harian atau melihat riwayat jurnal.</p>
                   </div>
 
-                  <div className="rounded-2xl border border-zinc-200/60 bg-white p-6 shadow-md">
-                    <div className="flex items-center justify-between pb-4 border-b border-zinc-100 mb-6">
-                      <h3 className="text-base font-bold text-zinc-800">
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-3.5 sm:p-6 shadow-sm space-y-4 w-full">
+                    {/* Month Header Navigation */}
+                    <div className="flex items-center justify-between pb-3 border-b border-zinc-100 gap-2">
+                      <h3 className="text-sm sm:text-base font-extrabold text-zinc-800">
                         {indonesianMonths[currentMonth]} {currentYear}
                       </h3>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
                         <button
                           type="button"
                           onClick={() => {
@@ -1715,9 +1871,9 @@ export default function StudentDashboard() {
                               setCurrentMonth(currentMonth - 1);
                             }
                           }}
-                          className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition cursor-pointer"
+                          className="text-3xs sm:text-2xs font-extrabold px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-slate-50 text-zinc-700 transition cursor-pointer shadow-2xs flex items-center gap-1"
                         >
-                          ◀ Sebelumnya
+                          <span>◀</span> <span className="hidden sm:inline">Sebelumnya</span>
                         </button>
                         <button
                           type="button"
@@ -1729,27 +1885,33 @@ export default function StudentDashboard() {
                               setCurrentMonth(currentMonth + 1);
                             }
                           }}
-                          className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-600 transition cursor-pointer"
+                          className="text-3xs sm:text-2xs font-extrabold px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-slate-50 text-zinc-700 transition cursor-pointer shadow-2xs flex items-center gap-1"
                         >
-                          Berikutnya ▶
+                          <span className="hidden sm:inline">Berikutnya</span> <span>▶</span>
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-2 text-center text-xs font-bold text-zinc-400 mb-2">
+                    {/* Day of Week Header */}
+                    <div className="grid grid-cols-7 gap-1 sm:gap-2.5 text-center text-3xs sm:text-xs font-black uppercase text-zinc-400 mb-1">
                       <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-2">
+                    {/* Calendar Grid */}
+                    <div className="grid grid-cols-7 gap-1 sm:gap-2.5 w-full">
                       {(() => {
                         const firstDayIndex = new Date(currentYear, currentMonth, 1).getDay();
                         const totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
                         const daysList = [];
 
+                        // Empty cells before 1st of month (transparent without border)
                         for (let i = 0; i < firstDayIndex; i++) {
-                          daysList.push(<div key={`empty-${i}`} className="h-11 sm:h-14 bg-zinc-50/50 rounded-xl border border-zinc-100/60" />);
+                          daysList.push(
+                            <div key={`empty-${i}`} className="aspect-square max-h-20 sm:max-h-24 md:max-h-28 bg-transparent" />
+                          );
                         }
 
+                        // Calendar Day Cells
                         for (let day = 1; day <= totalDays; day++) {
                           const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                           const cellDateReset = new Date(currentYear, currentMonth, day).setHours(0,0,0,0);
@@ -1781,22 +1943,24 @@ export default function StudentDashboard() {
                                   setShowFillModal(true);
                                 }
                               }}
-                              className={`h-11 sm:h-14 p-1.5 sm:p-2 border rounded-xl flex flex-col justify-between items-center transition-all cursor-pointer text-center relative group ${
+                              className={`aspect-square max-h-20 sm:max-h-24 md:max-h-28 p-1 sm:p-2 border rounded-xl sm:rounded-2xl flex flex-col justify-between items-center transition-all cursor-pointer text-center relative group overflow-hidden w-full ${
                                 journal
-                                  ? "bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 border-[#5A77DF]/40 shadow-2xs"
+                                  ? "bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 border-2 border-[#5A77DF]/50 shadow-xs"
                                   : isFuture
-                                    ? "bg-zinc-50 opacity-40 cursor-not-allowed border-zinc-200/40"
-                                    : "bg-white hover:bg-zinc-50 hover:border-[#5A77DF]/40 border-zinc-200"
+                                    ? "bg-slate-50/60 opacity-40 cursor-not-allowed border-zinc-200/40"
+                                    : "bg-white hover:bg-slate-50 hover:border-[#5A77DF]/50 border-zinc-200 shadow-2xs"
                               }`}
                             >
-                              <span className={`text-2xs sm:text-xs font-black ${journal ? "text-[#3E53A2]" : isFuture ? "text-zinc-400" : "text-zinc-700"}`}>
+                              <span className={`text-2xs sm:text-sm font-black leading-none pt-0.5 sm:pt-1 ${journal ? "text-[#3E53A2]" : isFuture ? "text-zinc-400" : "text-zinc-800"}`}>
                                 {day}
                               </span>
                               
-                              {journal && moodEmoji && (
-                                <div className="transform group-hover:scale-110 transition duration-200 mb-0.5" title={moodEmoji.label}>
+                              {journal && moodEmoji ? (
+                                <div className="transform group-hover:scale-110 transition duration-200 shrink-0 pb-0.5 sm:pb-1 flex items-center justify-center scale-65 sm:scale-125 md:scale-140" title={moodEmoji.label}>
                                   {moodEmoji.icon}
                                 </div>
+                              ) : (
+                                <div className="h-2 sm:h-4 shrink-0" />
                               )}
                             </button>
                           );
@@ -1875,7 +2039,7 @@ export default function StudentDashboard() {
                   <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
                     <div className="flex items-center gap-3">
                       <User className="h-6 w-6 text-[#5A77DF]" />
-                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Profil Pengguna DigiMind</h2>
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Profil</h2>
                     </div>
                     {!isEditingProfile && (
                       <button
@@ -1960,42 +2124,44 @@ export default function StudentDashboard() {
                         >
                           {data?.allClasses?.map((cls: any) => (
                             <option key={cls.id} value={cls.id}>
-                              🏫 {cls.name} {cls.major ? `(${cls.major})` : ""}
+                              {cls.name} ({cls.major || "Umum"}) • TA {cls.academic_year || cls.year || "2025/2026"}
                             </option>
                           ))}
                         </select>
                       </div>
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-2 pt-2">
                         <button
                           type="button"
                           onClick={() => setIsEditingProfile(false)}
-                          className="flex-1 py-3 rounded-xl border border-zinc-200 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold transition cursor-pointer"
+                          className="flex-1 py-3 rounded-xl border border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-extrabold hover:bg-zinc-200 transition cursor-pointer"
                         >
                           Batal
                         </button>
                         <button
                           type="submit"
                           disabled={savingProfile}
-                          className="flex-1 py-3 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-md transition cursor-pointer disabled:opacity-50"
+                          className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] text-white text-xs font-extrabold shadow-md hover:brightness-110 transition cursor-pointer disabled:opacity-50"
                         >
-                          {savingProfile ? "Menyimpan..." : "Simpan Perubahan"}
+                          {savingProfile ? "Menyimpan..." : "Simpan Profil"}
                         </button>
                       </div>
                     </form>
                   ) : (
                     <div className="space-y-6">
-                      <div className="flex flex-col items-center space-y-3 pb-2">
-                        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#5A77DF]/30 bg-[#5A77DF]/10 flex items-center justify-center text-5xl select-none shadow-sm">
-                          {student.avatar ? (
-                            student.avatar.startsWith("data:") || student.avatar.startsWith("http") ? (
-                              <img src={student.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                      <div className="flex flex-col items-center justify-center p-6 bg-zinc-50 rounded-2xl border border-zinc-150">
+                        <div className="relative h-24 w-24 rounded-full p-[3px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-md mb-3">
+                          <div className="h-full w-full rounded-full overflow-hidden bg-white flex items-center justify-center">
+                            {student.avatar ? (
+                              student.avatar.startsWith("data:") || student.avatar.startsWith("http") ? (
+                                <img src={student.avatar} alt="Avatar" className="h-full w-full object-cover" />
+                              ) : (
+                                student.avatar
+                              )
                             ) : (
-                              student.avatar
-                            )
-                          ) : (
-                            <span className="text-[#5A77DF] font-black text-2xl">{student.name.charAt(0).toUpperCase()}</span>
-                          )}
+                              <span className="text-[#5A77DF] font-black text-2xl">{student.name.charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
                         </div>
                         <div className="text-center">
                           <h3 className="text-base font-black text-zinc-900">{student.name}</h3>
@@ -2006,8 +2172,10 @@ export default function StudentDashboard() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
                         <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
-                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Kelas</div>
-                          <div className="font-extrabold text-zinc-900">{student.class}</div>
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Kelas & Tahun Ajaran</div>
+                          <div className="font-extrabold text-zinc-900">
+                            {student.class_name || student.class} {student.class_major ? `(${student.class_major})` : ""} {student.academicYear ? `• ${student.academicYear}` : ""}
+                          </div>
                         </div>
                         <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
                           <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Hasil SRQ-29 Status Mental</div>
@@ -2120,7 +2288,7 @@ export default function StudentDashboard() {
                           onClick={handleLogout}
                           className="w-full py-3.5 rounded-xl border border-rose-500/30 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2"
                         >
-                          <LogOut className="h-4 w-4" /> Keluar dari Akun (Logout)
+                          <LogOut className="h-4 w-4" /> Keluar
                         </button>
                       </div>
                     </div>
@@ -2226,6 +2394,8 @@ export default function StudentDashboard() {
                     </div>
                   </div>
                 </div>
+              )}
+                </>
               )}
             </main>
           </div>
@@ -2333,38 +2503,29 @@ export default function StudentDashboard() {
 
       {/* POPUP MODAL: PRETEST PENEMPATAN LEVEL MAPEL */}
       {showSubjectPretestModal && activeSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto text-zinc-900 space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-5 animate-fadeIn">
+          <div className="w-full max-w-5xl rounded-3xl border border-zinc-200/80 bg-slate-50 p-4 sm:p-6 shadow-2xl relative max-h-[92vh] overflow-y-auto text-zinc-900 space-y-4">
             <button
               type="button"
               onClick={() => setShowSubjectPretestModal(false)}
-              className="absolute right-5 top-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+              className="absolute right-5 top-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200 transition cursor-pointer z-10"
               title="Tutup Modal"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="border-b border-zinc-150 pb-4">
-              <span className="text-3xs uppercase tracking-widest text-[#5A77DF] font-black font-mono">
-                Pretest Penempatan Level
-              </span>
-              <h2 className="text-xl font-black text-zinc-900 mt-1">
-                Mata Pelajaran: {activeSubject.name}
-              </h2>
-            </div>
-
             {loadingSubjectQuiz ? (
-              <div className="py-12 text-center space-y-3">
+              <div className="py-16 text-center space-y-3 bg-white rounded-3xl border border-zinc-200/80 p-8 shadow-sm">
                 <div className="h-10 w-10 border-4 border-[#5A77DF] border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs text-zinc-500 font-medium">Menyiapkan Lembar Soal Pretest...</p>
+                <p className="text-xs text-zinc-500 font-medium">Menyiapkan Lembar Soal Pretest Mapel...</p>
               </div>
             ) : subjectPretestResult ? (
-              <div className="py-6 text-center space-y-5 animate-fadeIn">
+              <div className="py-8 text-center space-y-5 bg-white rounded-3xl border border-zinc-200/80 p-6 sm:p-10 shadow-sm animate-fadeIn">
                 <div className="h-16 w-16 bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-full flex items-center justify-center mx-auto text-3xl font-extrabold shadow-xs">
                   ✓
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Hasil Pretest Penempatan</h3>
+                  <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider font-mono">Hasil Pretest Penempatan</h3>
                   <div className="text-3xl font-black text-[#5A77DF]">
                     Level: {subjectPretestResult.subjectLevel} ({subjectPretestResult.score}%)
                   </div>
@@ -2381,83 +2542,187 @@ export default function StudentDashboard() {
                 </button>
               </div>
             ) : subjectQuiz && subjectQuiz.questions ? (
-              <div className="space-y-6">
-                {/* Navigator Header */}
-                <div className="flex items-center justify-between text-xs text-zinc-500 font-bold font-mono border-b border-zinc-150 pb-3">
-                  <span>Soal {subjectPretestIndex + 1} dari {subjectQuiz.questions.length}</span>
-                  <span className="text-[#5A77DF] font-extrabold">
-                    {Object.keys(subjectAnswers).length}/{subjectQuiz.questions.length} Terjawab
-                  </span>
-                </div>
+              /* Quiz Content Container */
+              (() => {
+                const totalQ = subjectQuiz.questions.length;
+                const answeredCnt = Object.keys(subjectAnswers).length;
+                const pct = Math.round((answeredCnt / (totalQ || 1)) * 100);
+                const currentQ = subjectQuiz.questions[subjectPretestIndex];
 
-                {/* Current Question */}
-                {(() => {
-                  const q = subjectQuiz.questions[subjectPretestIndex];
-                  if (!q) return null;
+                return (
+                  <div className="space-y-4">
+                    {/* Header Title Card */}
+                    <div className="shrink-0 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-4 md:p-5 shadow-sm space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                          <img
+                            src="/quiz-illustration.png"
+                            alt="DigiMind Quiz Illustration"
+                            className="h-16 sm:h-20 md:h-24 w-auto object-contain shrink-0 drop-shadow-md"
+                          />
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center text-3xs font-black uppercase tracking-widest text-[#5A77DF] bg-[#5A77DF]/10 px-2.5 py-0.5 rounded-full border border-[#5A77DF]/20 font-mono">
+                              Pretest Penempatan Level
+                            </span>
+                            <h1 className="text-base sm:text-lg md:text-xl font-black tracking-tight text-zinc-900 uppercase">
+                              Mata Pelajaran: {activeSubject.name}
+                            </h1>
+                          </div>
+                        </div>
+                        <div className="text-2xs sm:text-xs text-zinc-700 max-w-sm bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 leading-relaxed font-medium">
+                          <strong className="text-zinc-900 font-extrabold">Petunjuk:</strong> Jawablah pertanyaan pretest ini dengan jujur untuk menentukan level materi penempatan belajar Anda.
+                        </div>
+                      </div>
 
-                  return (
-                    <div className="space-y-4 text-left">
-                      <p className="text-sm font-bold leading-relaxed text-zinc-900">
-                        {q.question}
-                      </p>
-
-                      <div className="grid grid-cols-1 gap-2.5 pt-2">
-                        {q.options.map((opt: any) => {
-                          const isSelected = subjectAnswers[q.id] === opt.id;
-                          return (
-                            <button
-                              key={opt.id}
-                              type="button"
-                              onClick={() => setSubjectAnswers((prev) => ({ ...prev, [q.id]: opt.id }))}
-                              className={`w-full text-left rounded-xl border px-4 py-3.5 text-xs font-bold transition cursor-pointer ${
-                                isSelected
-                                  ? "border-[#5A77DF] bg-[#5A77DF]/10 text-[#3E53A2] shadow-2xs font-extrabold"
-                                  : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF]/40 hover:bg-zinc-50"
-                              }`}
-                            >
-                              {opt.option_text}
-                            </button>
-                          );
-                        })}
+                      {/* Progress Bar */}
+                      <div className="pt-1 flex items-center gap-3">
+                        <div className="flex-1 h-2 rounded-full bg-[#5A77DF]/15 border border-[#5A77DF]/25 overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] transition-all duration-300 ease-out rounded-full"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-extrabold text-zinc-600 font-mono">{pct}% ({answeredCnt}/{totalQ})</span>
                       </div>
                     </div>
-                  );
-                })()}
 
-                {/* Bottom Bar */}
-                <div className="flex items-center justify-between border-t border-zinc-150 pt-5">
-                  <button
-                    type="button"
-                    onClick={() => setSubjectPretestIndex((prev) => Math.max(0, prev - 1))}
-                    disabled={subjectPretestIndex === 0}
-                    className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-5 py-2.5 text-xs font-bold text-zinc-700 disabled:opacity-30 cursor-pointer shadow-2xs"
-                  >
-                    Sebelumnya
-                  </button>
+                    {/* 5:7 Ratio Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-5">
+                      {/* Left Quiz Card (5 Cols) */}
+                      <div className="md:col-span-5 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-5 md:p-6 shadow-sm flex flex-col justify-between space-y-4">
+                        {currentQ && (
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <span className="text-xs md:text-sm font-black text-[#5A77DF] uppercase tracking-wider font-mono block">
+                                PERTANYAAN {subjectPretestIndex + 1} DARI {totalQ}
+                              </span>
+                              <h2 className="text-base sm:text-lg font-black leading-relaxed text-zinc-900">
+                                {currentQ.question}
+                              </h2>
+                            </div>
 
-                  {subjectPretestIndex === subjectQuiz.questions.length - 1 ? (
-                    <button
-                      type="button"
-                      onClick={handleSubmitSubjectPretest}
-                      disabled={submittingSubjectPretest}
-                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white shadow-md transition disabled:opacity-50 cursor-pointer"
-                    >
-                      {submittingSubjectPretest ? "Mengirim..." : "Kirim Jawaban Pretest"}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setSubjectPretestIndex((prev) => Math.min(subjectQuiz.questions.length - 1, prev + 1))}
-                      className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-7 py-2.5 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
-                    >
-                      Selanjutnya
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-500 italic text-center">Soal pretest belum tersedia.</p>
-            )}
+                            {/* Options */}
+                            <div className="grid grid-cols-1 gap-2.5 pt-1">
+                              {currentQ.options.map((opt: any) => {
+                                const isSelected = subjectAnswers[currentQ.id] === opt.id;
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => setSubjectAnswers((prev) => ({ ...prev, [currentQ.id]: opt.id }))}
+                                    className={`w-full flex items-center justify-between rounded-xl border px-4 py-3 text-xs sm:text-sm font-extrabold transition-all duration-200 cursor-pointer shadow-2xs ${
+                                      isSelected
+                                        ? "border-2 border-[#5A77DF] bg-indigo-50/70 text-[#3E53A2] shadow-md shadow-indigo-100 font-black"
+                                        : "border-zinc-200 bg-white text-zinc-700 hover:border-[#5A77DF] hover:bg-slate-50 hover:text-zinc-900"
+                                    }`}
+                                  >
+                                    <span className="text-xs sm:text-sm font-black tracking-wide text-left">{opt.option_text}</span>
+                                    <span className={`h-5 w-5 rounded-full border-2 flex items-center justify-center text-[10px] font-black transition-all shrink-0 ${
+                                      isSelected
+                                        ? "border-[#5A77DF] bg-[#5A77DF] text-white"
+                                        : "border-zinc-300 text-transparent"
+                                    }`}>
+                                      ✓
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Navigation Actions */}
+                        <div className="mt-4 flex items-center justify-between pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setSubjectPretestIndex((prev) => Math.max(0, prev - 1))}
+                            disabled={subjectPretestIndex === 0}
+                            className="rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-xs font-bold text-zinc-700 transition-all hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40 shadow-2xs cursor-pointer"
+                          >
+                            Sebelumnya
+                          </button>
+
+                          {subjectPretestIndex === totalQ - 1 ? (
+                            <button
+                              type="button"
+                              onClick={handleSubmitSubjectPretest}
+                              disabled={submittingSubjectPretest}
+                              className="rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-md shadow-emerald-200 transition-all hover:brightness-105 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                            >
+                              {submittingSubjectPretest ? "Mengirim..." : "Kirim Pretest"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setSubjectPretestIndex((prev) => Math.min(totalQ - 1, prev + 1))}
+                              className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-2.5 text-xs font-extrabold text-white shadow-md shadow-indigo-200 transition-all active:scale-[0.98] cursor-pointer"
+                            >
+                              Selanjutnya
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Navigator Sidebar (7 Cols) */}
+                      <div className="md:col-span-7 rounded-2xl md:rounded-3xl border border-zinc-200/80 bg-white p-5 md:p-6 shadow-sm flex flex-col justify-between space-y-3">
+                        <div className="space-y-3">
+                          <h2 className="text-xs font-extrabold uppercase tracking-wider text-zinc-800 shrink-0 font-mono flex items-center justify-between">
+                            <span>Daftar Soal Pretest</span>
+                            <span className="text-3xs font-extrabold text-[#5A77DF] bg-[#5A77DF]/10 px-2.5 py-0.5 rounded-lg border border-[#5A77DF]/20">
+                              {answeredCnt}/{totalQ} DIJAWAB
+                            </span>
+                          </h2>
+
+                          {/* Number Grid */}
+                          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-6 gap-2 sm:gap-2.5">
+                            {subjectQuiz.questions.map((q: any, idx: number) => {
+                              const isAnswered = !!subjectAnswers[q.id];
+                              const isActive = subjectPretestIndex === idx;
+
+                              return (
+                                <button
+                                  key={q.id}
+                                  type="button"
+                                  onClick={() => setSubjectPretestIndex(idx)}
+                                  className={`flex flex-col items-center justify-center rounded-xl py-2.5 sm:py-3 px-1.5 text-center border transition-all cursor-pointer h-full min-h-[50px] ${
+                                    isActive
+                                      ? "border-2 border-[#3E53A2] bg-[#5A77DF] text-white font-black shadow-md shadow-indigo-200 ring-2 ring-[#5A77DF]/40 scale-[1.02]"
+                                      : isAnswered
+                                      ? "border-2 border-emerald-400 bg-emerald-50 text-emerald-900 font-black shadow-2xs hover:bg-emerald-100"
+                                      : "border-zinc-200 bg-slate-50 text-zinc-700 hover:border-zinc-300 hover:bg-slate-100 font-bold"
+                                  }`}
+                                >
+                                  <span className={`text-[8.5px] sm:text-[9.5px] font-extrabold uppercase tracking-widest font-mono ${isActive ? "text-white/80" : isAnswered ? "text-emerald-700" : "text-zinc-400"}`}>
+                                    SOAL
+                                  </span>
+                                  <span className="text-sm sm:text-base font-black mt-0.5 leading-none">{idx + 1}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Legend Footer */}
+                        <div className="mt-2 shrink-0 flex flex-wrap items-center justify-between gap-3 text-2xs text-zinc-600 leading-normal pt-2 font-extrabold">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 border border-emerald-400" />
+                            <span className="text-emerald-700">Sudah dijawab</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-[#5A77DF] border border-[#3E53A2]" />
+                            <span className="text-[#5A77DF]">Sedang aktif</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full bg-slate-200 border border-zinc-300" />
+                            <span className="text-zinc-500">Belum dijawab</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : null}
           </div>
         </div>
       )}

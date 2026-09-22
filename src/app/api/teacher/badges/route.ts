@@ -24,9 +24,18 @@ export async function GET() {
       return NextResponse.json({ success: false, message: "Akses ditolak." }, { status: 401 });
     }
 
-    // Get subjects taught by teacher
+    // Get subjects taught by teacher OR belonging to teacher's class (for Wali Kelas)
+    const whereSubject = teacher.class_id
+      ? {
+          OR: [
+            { teacher_id: teacher.id },
+            { class_id: teacher.class_id }
+          ]
+        }
+      : { teacher_id: teacher.id };
+
     const subjects = await prisma.subject.findMany({
-      where: { teacher_id: teacher.id },
+      where: whereSubject,
       select: { id: true }
     });
     const subjectIds = subjects.map(s => s.id);
@@ -55,7 +64,7 @@ export async function GET() {
       orderBy: { created_at: "desc" }
     });
 
-    // Also return list of modules taught by this teacher so they can select them in dropdown
+    // Also return list of modules taught in these subjects
     const modules = await prisma.module.findMany({
       where: {
         subject_id: { in: subjectIds }
@@ -94,15 +103,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "Nama dan modul wajib diisi." }, { status: 400 });
     }
 
-    // Verify module belongs to teacher's subjects
+    // Verify module belongs to teacher's subjects or class
     const moduleIdInt = parseInt(module_id);
     const targetModule = await prisma.module.findUnique({
       where: { id: moduleIdInt },
       include: { subject: true }
     });
 
-    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
-      return NextResponse.json({ success: false, message: "Modul yang dipilih tidak valid atau bukan milik Anda." }, { status: 403 });
+    const isAuthorized = targetModule?.subject && (
+      targetModule.subject.teacher_id === teacher.id ||
+      (teacher.class_id && targetModule.subject.class_id === teacher.class_id)
+    );
+
+    if (!targetModule || !isAuthorized) {
+      return NextResponse.json({ success: false, message: "Modul yang dipilih tidak valid." }, { status: 403 });
     }
 
     const newBadge = await prisma.badge.create({
@@ -171,23 +185,33 @@ export async function PUT(request: Request) {
     const badgeIdInt = parseInt(id);
     const moduleIdInt = parseInt(module_id);
 
-    // Verify badge belongs to teacher's subject module
+    // Verify badge belongs to teacher's subject module or class
     const targetBadge = await prisma.badge.findUnique({
       where: { id: badgeIdInt },
       include: { module: { include: { subject: true } } }
     });
 
-    if (!targetBadge || targetBadge.module?.subject?.teacher_id !== teacher.id) {
+    const isAuthorizedBadge = targetBadge?.module?.subject && (
+      targetBadge.module.subject.teacher_id === teacher.id ||
+      (teacher.class_id && targetBadge.module.subject.class_id === teacher.class_id)
+    );
+
+    if (!targetBadge || !isAuthorizedBadge) {
       return NextResponse.json({ success: false, message: "Akses badge tidak valid." }, { status: 403 });
     }
 
-    // Verify new module belongs to teacher's subjects
+    // Verify new module belongs to teacher's subjects or class
     const targetModule = await prisma.module.findUnique({
       where: { id: moduleIdInt },
       include: { subject: true }
     });
 
-    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
+    const isAuthorizedModule = targetModule?.subject && (
+      targetModule.subject.teacher_id === teacher.id ||
+      (teacher.class_id && targetModule.subject.class_id === teacher.class_id)
+    );
+
+    if (!targetModule || !isAuthorizedModule) {
       return NextResponse.json({ success: false, message: "Modul baru yang dipilih tidak valid." }, { status: 403 });
     }
 
@@ -263,8 +287,13 @@ export async function DELETE(request: Request) {
       include: { module: { include: { subject: true } } }
     });
 
-    if (!targetBadge || targetBadge.module?.subject?.teacher_id !== teacher.id) {
-      return NextResponse.json({ success: false, message: "Akses badge tidak valid atau bukan milik Anda." }, { status: 403 });
+    const isAuthorizedBadge = targetBadge?.module?.subject && (
+      targetBadge.module.subject.teacher_id === teacher.id ||
+      (teacher.class_id && targetBadge.module.subject.class_id === teacher.class_id)
+    );
+
+    if (!targetBadge || !isAuthorizedBadge) {
+      return NextResponse.json({ success: false, message: "Akses badge tidak valid." }, { status: 403 });
     }
 
     await prisma.badge.delete({

@@ -306,3 +306,101 @@ export async function POST(request: Request) {
     );
   }
 }
+
+// PUT: Mark student mentoring/intervention as completed (Selesai Pendampingan)
+export async function PUT(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("session_token")?.value;
+    const decoded = sessionToken ? verifyJWT(sessionToken) : null;
+
+    if (!decoded || decoded.role !== "teacher") {
+      return NextResponse.json(
+        { success: false, message: "Akses ditolak. Hanya Guru BK yang dapat memperbarui status pendampingan." },
+        { status: 403 }
+      );
+    }
+
+    const teacher = await prisma.guru.findUnique({
+      where: { user_id: decoded.userId }
+    });
+
+    if (!teacher || teacher.type !== "bk") {
+      return NextResponse.json(
+        { success: false, message: "Hanya Guru BK yang dapat menandai pendampingan selesai." },
+        { status: 403 }
+      );
+    }
+
+    const { studentId } = await request.json();
+    if (!studentId) {
+      return NextResponse.json(
+        { success: false, message: "ID Siswa wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const sId = parseInt(studentId);
+
+    // 1. Update Siswa record
+    await prisma.siswa.update({
+      where: { id: sId },
+      data: {
+        risk_flag: false,
+        mental_level: "Sehat & Stabil (Sudah Pendampingan BK)",
+        adaptive_mental: "Sudah Pendampingan BK"
+      }
+    });
+
+    // 2. Update or create MentalIntervention
+    const activeInterventions = await prisma.mentalIntervention.findMany({
+      where: { student_id: sId, status: "active" }
+    });
+
+    if (activeInterventions.length > 0) {
+      await prisma.mentalIntervention.updateMany({
+        where: { student_id: sId, status: "active" },
+        data: {
+          status: "completed",
+          ended_at: new Date()
+        }
+      });
+    } else {
+      await prisma.mentalIntervention.create({
+        data: {
+          student_id: sId,
+          name: encryptSensitiveText("Pendampingan BK Selesai") || "Pendampingan BK Selesai",
+          description: encryptSensitiveText(`Pendampingan konseling diselesaikan oleh Guru BK: ${teacher.name}`) || `Pendampingan konseling diselesaikan oleh Guru BK: ${teacher.name}`,
+          status: "completed",
+          assigned_by: decoded.userId,
+          started_at: new Date(),
+          ended_at: new Date()
+        }
+      });
+    }
+
+    // 3. Insert system chat message
+    const sysMsgText = `✅ Pendampingan BK Selesai: Guru BK (${teacher.name}) telah menandai bahwa sesi bimbingan & pendampingan untuk siswa ini telah selesai. Status risiko telah diperbarui menjadi 'Sudah Pendampingan'.`;
+    const encryptedMsg = encryptSensitiveText(sysMsgText) || sysMsgText;
+
+    await prisma.chatMessage.create({
+      data: {
+        student_id: sId,
+        teacher_id: teacher.id,
+        message: encryptedMsg,
+        sender: "teacher"
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Status pendampingan siswa berhasil diperbarui menjadi Selesai Pendampingan."
+    });
+
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Gagal memperbarui status pendampingan.", error: error.message },
+      { status: 500 }
+    );
+  }
+}

@@ -45,6 +45,7 @@ export async function GET() {
         },
         modules: {
           include: {
+            level: true,
             quizzes: {
               include: {
                 questions: {

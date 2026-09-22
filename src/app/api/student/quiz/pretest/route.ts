@@ -97,6 +97,8 @@ export async function GET() {
     const sessionToken = cookieStore.get("session_token")?.value;
     const decoded = sessionToken ? verifyJWT(sessionToken) : null;
 
+    let hasCompletedPretest = false;
+
     if (decoded && decoded.role === "student") {
       const student = await prisma.siswa.findUnique({
         where: { user_id: decoded.userId }
@@ -112,10 +114,7 @@ export async function GET() {
         });
 
         if (pretestAttempt) {
-          return NextResponse.json({
-            success: true,
-            hasCompletedPretest: true
-          });
+          hasCompletedPretest = true;
         }
       }
     }
@@ -152,6 +151,7 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
+      hasCompletedPretest,
       quiz: pretestQuiz,
     });
   } catch (error) {

@@ -5,6 +5,14 @@ import { verifyJWT } from "@/lib/auth-utils";
 import { decryptSensitiveText } from "@/lib/encryption";
 import { calculateStudentModuleProgress } from "@/lib/student-progress";
 
+function formatAcademicYear(dateInput: Date | string | null | undefined, explicitYear?: string | null): string {
+  if (explicitYear && explicitYear.trim()) return explicitYear.trim();
+  if (!dateInput) return "2025/2026";
+  const d = new Date(dateInput);
+  const year = isNaN(d.getFullYear()) ? 2025 : d.getFullYear();
+  return `${year}/${year + 1}`;
+}
+
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -98,13 +106,13 @@ export async function GET() {
       moduleProgressMap[m.id] = computeModuleProgress(m.id);
     });
 
-    // Fetch all Subjects for Student Class
+    // Fetch all Subjects across all classes so previous class modules remain accessible
     const subjects = await prisma.subject.findMany({
       where: {
-        class_id: student.class_id,
         name: { not: "Literasi Digital" }
       },
       include: {
+        class: true,
         teacher: true,
         quizzes: {
           where: { type: "pretest" },
@@ -117,7 +125,11 @@ export async function GET() {
             category: true
           }
         }
-      }
+      },
+      orderBy: [
+        { class_id: "asc" },
+        { name: "asc" }
+      ]
     });
 
     const subjectsFormatted = subjects.map(sub => {
@@ -138,16 +150,26 @@ export async function GET() {
       });
 
       // Filter subject modules according to student's assigned placement level
-      if (hasCompletedSubjectPretest && subModules.length > 0) {
-        const levelSpecificModules = subModules.filter((m: any) => !m.level || m.level.name === currentSubjectLevel);
-        if (levelSpecificModules.length > 0) {
-          subModules = levelSpecificModules;
-        }
+      if (hasCompletedSubjectPretest && currentSubjectLevel !== "Belum Pretest") {
+        const targetLevelStr = currentSubjectLevel.trim().toLowerCase();
+        
+        subModules = subModules.filter((m: any) => {
+          if (!m.level || !m.level.name) return false;
+          const modLevelStr = m.level.name.trim().toLowerCase();
+          
+          return modLevelStr === targetLevelStr ||
+                 (targetLevelStr.startsWith("advan") && modLevelStr.startsWith("advan")) ||
+                 (targetLevelStr.startsWith("intermed") && modLevelStr.startsWith("intermed")) ||
+                 (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("basic"));
+        });
       }
 
       return {
         id: sub.id,
         name: sub.name,
+        class_id: sub.class_id,
+        className: sub.class?.major ? `${sub.class.name} ${sub.class.major}` : sub.class?.name || `Kelas ${sub.class_id}`,
+        isCurrentClass: sub.class_id === student.class_id,
         teacher: sub.teacher,
         pretestQuizId: pretestQuiz?.id || null,
         hasPretest: hasCompletedSubjectPretest,
@@ -155,6 +177,40 @@ export async function GET() {
         score: subjectLevelRecord?.score || 0,
         modules: subModules
       };
+    });
+
+    // Build unique list of available classes that have subjects/modules
+    const classMap = new Map<number, { id: number; name: string; major: string; year: string; isCurrent: boolean }>();
+    if (student.class) {
+      classMap.set(student.class.id, {
+        id: student.class.id,
+        name: student.class.name,
+        major: student.class.major,
+        year: formatAcademicYear(student.class.created_at, student.class.academic_year),
+        isCurrent: true
+      });
+    }
+
+    subjects.forEach(sub => {
+      if (sub.class && !classMap.has(sub.class.id)) {
+        classMap.set(sub.class.id, {
+          id: sub.class.id,
+          name: sub.class.name,
+          major: sub.class.major,
+          year: formatAcademicYear(sub.class.created_at, sub.class.academic_year),
+          isCurrent: sub.class.id === student.class_id
+        });
+      }
+    });
+
+    const availableClasses = Array.from(classMap.values()).map(c => ({
+      ...c,
+      academicYear: `TA ${c.year}`,
+      displayName: c.major ? `${c.name} ${c.major} (${c.year})` : `${c.name} (${c.year})`
+    })).sort((a, b) => {
+      if (a.isCurrent) return -1;
+      if (b.isCurrent) return 1;
+      return a.displayName.localeCompare(b.displayName);
     });
 
     // Compute accurate overall progress across accessible modules for this student's class & level
@@ -276,7 +332,11 @@ export async function GET() {
         username: student.user.username,
         nis: student.nis,
         class_id: student.class_id,
-        class: student.class.name,
+        class_name: student.class.name,
+        class_major: student.class.major,
+        year: formatAcademicYear(student.class.created_at, student.class.academic_year),
+        academicYear: `TA ${formatAcademicYear(student.class.created_at, student.class.academic_year)}`,
+        class: student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name,
         avatar: student.avatar,
         literacy_level: student.literacy_level || "Beginner",
         mental_level: student.mental_level || "Sehat & Stabil",
@@ -302,6 +362,7 @@ export async function GET() {
       modules: [],
       completedModuleIds,
       moduleProgressMap,
+      availableClasses,
       subjects: subjectsFormatted,
       badges: {
         all: allBadges,
