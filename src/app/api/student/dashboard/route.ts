@@ -74,10 +74,36 @@ export async function GET() {
     });
     const completedModuleIds = completedRecords.map(r => r.module_id);
 
-    // Get all quiz attempts & dynamic scroll reading progress for student
+    // Get all quiz attempts with deep subject and answer relations for student
     const studentAttempts = await prisma.quizAttempt.findMany({
-      where: { student_id: student.id },
-      include: { quiz: true }
+      where: {
+        student_id: student.id,
+      },
+      include: {
+        quiz: {
+          include: {
+            module: {
+              include: {
+                subject: {
+                  include: { class: true },
+                },
+              },
+            },
+            subject: {
+              include: { class: true },
+            },
+          },
+        },
+        answers: {
+          include: {
+            question: {
+              include: { options: true },
+            },
+            option: true,
+          },
+        },
+      },
+      orderBy: { completed_at: "desc" },
     });
 
     const studentModuleProgresses = await prisma.studentModuleProgress.findMany({
@@ -106,9 +132,46 @@ export async function GET() {
       moduleProgressMap[m.id] = computeModuleProgress(m.id);
     });
 
-    // Fetch all Subjects across all classes so previous class modules remain accessible
+    // Determine accessible class IDs for this student:
+    // Always include student's active class (student.class_id).
+    // Include previous class IDs ONLY if the student has actual records (completed modules, reading progress, or quiz attempts).
+    const accessibleClassIds = new Set<number>([student.class_id]);
+
+    const pastModules = await prisma.module.findMany({
+      where: {
+        OR: [
+          { completed_by: { some: { student_id: student.id } } },
+          { module_progresses: { some: { student_id: student.id } } },
+          { quizzes: { some: { attempts: { some: { student_id: student.id } } } } }
+        ],
+        subject_id: { not: null }
+      },
+      select: { subject: { select: { class_id: true } } }
+    });
+
+    pastModules.forEach((m) => {
+      if (m.subject?.class_id) {
+        accessibleClassIds.add(m.subject.class_id);
+      }
+    });
+
+    const pastSubjectLevels = await prisma.studentSubjectLevel.findMany({
+      where: { student_id: student.id },
+      select: { subject: { select: { class_id: true } } }
+    });
+
+    pastSubjectLevels.forEach((sl) => {
+      if (sl.subject?.class_id) {
+        accessibleClassIds.add(sl.subject.class_id);
+      }
+    });
+
+    const targetClassIds = Array.from(accessibleClassIds);
+
+    // Fetch subjects strictly scoped to student's accessible classes
     const subjects = await prisma.subject.findMany({
       where: {
+        class_id: { in: targetClassIds },
         name: { not: "Literasi Digital" }
       },
       include: {
@@ -203,15 +266,76 @@ export async function GET() {
       }
     });
 
+    studentAttempts.forEach((a) => {
+      const cls = a.quiz.subject?.class || a.quiz.module?.subject?.class;
+      if (cls && !classMap.has(cls.id)) {
+        classMap.set(cls.id, {
+          id: cls.id,
+          name: cls.name,
+          major: cls.major,
+          year: formatAcademicYear(cls.created_at, cls.academic_year),
+          isCurrent: cls.id === student.class_id,
+        });
+      }
+    });
+
     const availableClasses = Array.from(classMap.values()).map(c => ({
       ...c,
       academicYear: `TA ${c.year}`,
-      displayName: c.major ? `${c.name} ${c.major} (${c.year})` : `${c.name} (${c.year})`
+      displayName: c.major ? `${c.name} ${c.major} (TA ${c.year})` : `${c.name} (TA ${c.year})`
     })).sort((a, b) => {
       if (a.isCurrent) return -1;
       if (b.isCurrent) return 1;
       return a.displayName.localeCompare(b.displayName);
     });
+
+    const gradesFormatted = studentAttempts
+      .filter((a) => a.completed_at !== null)
+      .filter((a) => !(a.quiz.type === "pretest" && a.quiz.subject_id === null && a.quiz.module_id === null))
+      .map((a) => {
+        const quizClassObj = a.quiz.subject?.class || a.quiz.module?.subject?.class || student.class;
+        const quizClassYear = quizClassObj
+          ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
+          : formatAcademicYear(student.class.created_at, student.class.academic_year);
+        const quizClassName = quizClassObj
+          ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
+          : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
+        const subjName = a.quiz.subject?.name || a.quiz.module?.subject?.name || (a.quiz.type === "pretest" ? "Pretest Diagnostik" : "Kuis Modul");
+        const classId = quizClassObj ? quizClassObj.id : student.class_id;
+
+        return {
+          id: a.id,
+          quizId: a.quiz_id,
+          title: a.quiz.title,
+          type: a.quiz.type === "pretest" ? "Pretest" : "Posttest",
+          classId,
+          className: quizClassName,
+          classYear: quizClassYear,
+          academicYear: `TA ${quizClassYear}`,
+          subjectId: a.quiz.subject_id || a.quiz.module?.subject_id || null,
+          subjectName: subjName,
+          score: a.score,
+          completedAt: a.completed_at
+            ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "-",
+          answers: a.answers.map((ans) => {
+            const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+            return {
+              id: ans.id,
+              question: ans.question.question,
+              selectedOption: ans.option.option_text,
+              isCorrect: ans.option.is_correct ?? false,
+              correctOption: correctOpt ? correctOpt.option_text : null,
+            };
+          }),
+        };
+      });
 
     // Compute accurate overall progress across accessible modules for this student's class & level
     const { progressPercent } = await calculateStudentModuleProgress(
@@ -343,11 +467,19 @@ export async function GET() {
         module_progress: student.module_progress,
         risk_flag: student.risk_flag
       },
-      allClasses: allClasses.map(c => ({
-        id: c.id,
-        name: c.name,
-        major: c.major
-      })),
+      allClasses: allClasses.map(c => {
+        const classYear = formatAcademicYear(c.created_at, c.academic_year);
+        const fullClassName = c.major ? `${c.name} ${c.major}` : c.name;
+        return {
+          id: c.id,
+          name: c.name,
+          major: c.major,
+          academic_year: c.academic_year || classYear,
+          year: classYear,
+          academicYear: `TA ${classYear}`,
+          displayName: `${fullClassName} • TA ${classYear}`,
+        };
+      }),
       monthlyScreening: {
         isCompletedThisMonth,
         lastCompletedAt: srqAttempts[0]?.completed_at || null,
@@ -364,6 +496,7 @@ export async function GET() {
       moduleProgressMap,
       availableClasses,
       subjects: subjectsFormatted,
+      grades: gradesFormatted,
       badges: {
         all: allBadges,
         unlocked: latestStudentBadges.map(sb => sb.badge)

@@ -105,24 +105,29 @@ export async function GET() {
     const progress = students.map((student) => {
       const recentJournals = student.mental_journals || [];
       const textJournal = recentJournals[0];
+      const latestMood = textJournal ? textJournal.mood_score : null;
       const averageMood = recentJournals.length > 0
         ? Math.round(recentJournals.reduce((sum, journal) => sum + journal.mood_score, 0) / recentJournals.length)
-        : 3;
+        : 0;
       const screenTime = parseScreenTime(textJournal?.activities ?? null);
       const completedMentalHealthModules = student.completed_modules.filter((completedModule) => mentalHealthModuleIds.has(completedModule.module_id)).length;
       const mentalHealthProgress = mentalHealthModules.length > 0
         ? Math.round((completedMentalHealthModules / mentalHealthModules.length) * 100)
         : 0;
-      const isResolved = student.risk_flag === false;
-      const riskFlag = isResolved ? false : (Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7);
+
+      const hasRecentLowMood = (latestMood !== null && latestMood <= 2) || (recentJournals.length > 0 && averageMood <= 2);
+      const hasHighScreenTime = screenTime > 7;
+      const riskFlag = hasRecentLowMood || hasHighScreenTime || student.risk_flag === true;
 
       return {
         id: student.id,
         student: student.name,
-        className: student.class?.name || "-",
+        className: student.class ? (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name) : "-",
+        classMajor: student.class?.major || "-",
+        academicYear: student.class?.academic_year || "2025/2026",
         literacy: student.module_progress ?? 0,
         mental: mentalHealthProgress,
-        risk: riskFlag ? (averageMood <= 2 ? "Perlu perhatian" : "Waspada") : "Stabil",
+        risk: riskFlag ? (hasRecentLowMood ? "Perlu perhatian" : "Waspada") : "Stabil",
       };
     });
 
@@ -221,7 +226,11 @@ export async function GET() {
         status: "Aktif",
         nis: user.student?.nis || "",
         class_id: user.student?.class_id || user.teacher?.class_id || "",
-        className: user.student?.class?.name || user.teacher?.class?.name || "",
+        className: user.student?.class
+          ? (user.student.class.major ? `${user.student.class.name} ${user.student.class.major}` : user.student.class.name)
+          : user.teacher?.class
+          ? (user.teacher.class.major ? `${user.teacher.class.name} ${user.teacher.class.major}` : user.teacher.class.name)
+          : "",
         nip: user.teacher?.nip || "",
         phone_number: user.teacher?.phone_number || "",
         teacher_type: user.teacher?.type || "subject",
@@ -234,7 +243,9 @@ export async function GET() {
       journals: journals.map((journal) => ({
         id: journal.id,
         student: journal.student?.name || "-",
-        className: journal.student?.class?.name || "-",
+        className: journal.student?.class
+          ? (journal.student.class.major ? `${journal.student.class.name} ${journal.student.class.major}` : journal.student.class.name)
+          : "-",
         mood: journal.mood_score,
         note: journal.notes || "-",
         ai_feedback: journal.ai_feedback || "-",
@@ -243,13 +254,19 @@ export async function GET() {
       progress,
       categories,
       levels,
-      classes,
+      classes: classes.map((c) => ({
+        ...c,
+        displayName: c.major ? `${c.name} ${c.major}` : c.name,
+        academicYear: c.academic_year || "2025/2026",
+      })),
       subjects,
       teachers,
       quizAttempts: quizAttempts.map(attempt => ({
         id: attempt.id,
         studentName: attempt.student?.name || "-",
-        className: attempt.student?.class?.name || "-",
+        className: attempt.student?.class
+          ? (attempt.student.class.major ? `${attempt.student.class.name} ${attempt.student.class.major}` : attempt.student.class.name)
+          : "-",
         quizTitle: attempt.quiz?.title || "-",
         quizType: attempt.quiz?.type || "-",
         score: attempt.score || 0,
@@ -280,7 +297,9 @@ export async function GET() {
           return {
             id: attempt.id,
             studentName: attempt.student?.name || "-",
-            className: attempt.student?.class?.name || "-",
+            className: attempt.student?.class
+              ? (attempt.student.class.major ? `${attempt.student.class.name} ${attempt.student.class.major}` : attempt.student.class.name)
+              : "-",
             quizTitle: attempt.quiz?.title || "Self Reporting Questionnaire - 29 (SRQ-29)",
             quizType: "SCREENING",
             score: displayScore,
@@ -358,7 +377,39 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: "Modul berhasil diperbarui!", module: mod });
       }
       if (action === "delete") {
-        await prisma.module.delete({ where: { id: parseInt(data.id) } });
+        const modIdInt = parseInt(data.id);
+        await prisma.$transaction(async (tx) => {
+          await tx.badge.deleteMany({ where: { module_id: modIdInt } });
+          await tx.studentModuleProgress.deleteMany({ where: { module_id: modIdInt } });
+          await tx.completedModule.deleteMany({ where: { module_id: modIdInt } });
+
+          const quizzes = await tx.quiz.findMany({ where: { module_id: modIdInt }, select: { id: true } });
+          const quizIds = quizzes.map((q) => q.id);
+
+          if (quizIds.length > 0) {
+            const attempts = await tx.quizAttempt.findMany({ where: { quiz_id: { in: quizIds } }, select: { id: true } });
+            const attemptIds = attempts.map((a) => a.id);
+            if (attemptIds.length > 0) {
+              await tx.answer.deleteMany({ where: { attempt_id: { in: attemptIds } } });
+              await tx.quizAttempt.deleteMany({ where: { id: { in: attemptIds } } });
+            }
+
+            const questions = await tx.question.findMany({ where: { quiz_id: { in: quizIds } }, select: { id: true } });
+            const questionIds = questions.map((q) => q.id);
+            if (questionIds.length > 0) {
+              const options = await tx.option.findMany({ where: { question_id: { in: questionIds } }, select: { id: true } });
+              const optionIds = options.map((o) => o.id);
+              if (optionIds.length > 0) {
+                await tx.answer.deleteMany({ where: { option_id: { in: optionIds } } });
+              }
+              await tx.option.deleteMany({ where: { question_id: { in: questionIds } } });
+              await tx.question.deleteMany({ where: { id: { in: questionIds } } });
+            }
+            await tx.quiz.deleteMany({ where: { id: { in: quizIds } } });
+          }
+
+          await tx.module.delete({ where: { id: modIdInt } });
+        });
         return NextResponse.json({ success: true, message: "Modul berhasil dihapus!" });
       }
     }
@@ -387,7 +438,21 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: "Kuis berhasil diperbarui!", quiz: q });
       }
       if (action === "delete") {
-        await prisma.quiz.delete({ where: { id: parseInt(data.id) } });
+        const quizId = parseInt(data.id);
+        const questions = await prisma.question.findMany({ where: { quiz_id: quizId }, select: { id: true } });
+        const questionIds = questions.map(q => q.id);
+        if (questionIds.length > 0) {
+          const options = await prisma.option.findMany({ where: { question_id: { in: questionIds } }, select: { id: true } });
+          const optionIds = options.map(o => o.id);
+          if (optionIds.length > 0) {
+            await prisma.answer.deleteMany({ where: { option_id: { in: optionIds } } });
+            await prisma.option.deleteMany({ where: { question_id: { in: questionIds } } });
+          }
+          await prisma.answer.deleteMany({ where: { question_id: { in: questionIds } } });
+          await prisma.question.deleteMany({ where: { quiz_id: quizId } });
+        }
+        await prisma.quizAttempt.deleteMany({ where: { quiz_id: quizId } });
+        await prisma.quiz.delete({ where: { id: quizId } });
         return NextResponse.json({ success: true, message: "Kuis berhasil dihapus!" });
       }
     }
@@ -409,10 +474,40 @@ export async function POST(request: Request) {
         });
         return NextResponse.json({ success: true, message: "Pertanyaan berhasil ditambahkan!", question });
       }
+      if (action === "bulk-create") {
+        const quizId = parseInt(data.quiz_id);
+        const questionsList = Array.isArray(data.questions) ? data.questions : [];
+        if (questionsList.length === 0) {
+          return NextResponse.json({ success: false, message: "Daftar soal kosong." }, { status: 400 });
+        }
+        for (const item of questionsList) {
+          await prisma.question.create({
+            data: {
+              quiz_id: quizId,
+              question: item.question,
+              options: {
+                create: item.options.map((opt: any) => ({
+                  option_text: typeof opt === "string" ? opt : opt.option_text,
+                  is_correct: typeof opt === "string" ? false : Boolean(opt.is_correct)
+                }))
+              }
+            }
+          });
+        }
+        return NextResponse.json({ success: true, message: `${questionsList.length} soal berhasil disimpan ke kuis!` });
+      }
       if (action === "update") {
-        await prisma.option.deleteMany({ where: { question_id: parseInt(data.id) } });
+        const questionId = parseInt(data.id);
+        const existingOptions = await prisma.option.findMany({ where: { question_id: questionId }, select: { id: true } });
+        const optionIds = existingOptions.map(o => o.id);
+        if (optionIds.length > 0) {
+          await prisma.answer.deleteMany({ where: { option_id: { in: optionIds } } });
+          await prisma.option.deleteMany({ where: { question_id: questionId } });
+        }
+        await prisma.answer.deleteMany({ where: { question_id: questionId } });
+
         const question = await prisma.question.update({
-          where: { id: parseInt(data.id) },
+          where: { id: questionId },
           data: {
             question: data.question,
             options: {
@@ -426,7 +521,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: "Pertanyaan berhasil diperbarui!", question });
       }
       if (action === "delete") {
-        await prisma.question.delete({ where: { id: parseInt(data.id) } });
+        const questionId = parseInt(data.id);
+        const existingOptions = await prisma.option.findMany({ where: { question_id: questionId }, select: { id: true } });
+        const optionIds = existingOptions.map(o => o.id);
+        if (optionIds.length > 0) {
+          await prisma.answer.deleteMany({ where: { option_id: { in: optionIds } } });
+          await prisma.option.deleteMany({ where: { question_id: questionId } });
+        }
+        await prisma.answer.deleteMany({ where: { question_id: questionId } });
+        await prisma.question.delete({ where: { id: questionId } });
         return NextResponse.json({ success: true, message: "Pertanyaan berhasil dihapus!" });
       }
     }

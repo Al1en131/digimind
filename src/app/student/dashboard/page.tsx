@@ -23,6 +23,9 @@ import {
   Upload,
   ArrowRight,
   GraduationCap,
+  School,
+  ChevronLeft,
+  ChevronRight,
   UserCheck,
   Frown,
   Annoyed,
@@ -37,13 +40,44 @@ import {
   Key,
   Zap,
   Play,
-  ChevronDown
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Printer,
+  Search,
+  XCircle
 } from "lucide-react";
+
+export interface QuizAnswerDetail {
+  id: number;
+  question: string;
+  selectedOption: string;
+  isCorrect: boolean;
+  correctOption: string | null;
+}
+
+export interface StudentGradeItem {
+  id: number;
+  quizId: number;
+  title: string;
+  type: "Pretest" | "Posttest";
+  classId: number;
+  className: string;
+  classYear: string;
+  academicYear: string;
+  subjectId: number | null;
+  subjectName: string;
+  score: number;
+  completedAt: string;
+  answers: QuizAnswerDetail[];
+}
 
 interface SchoolClassItem {
   id: number;
   name: string;
   major: string | null;
+  year?: string;
+  academicYear?: string;
   displayName?: string;
   isCurrent?: boolean;
 }
@@ -146,6 +180,7 @@ interface DashboardData {
   badges: BadgesState;
   journals: Journal[];
   leaderboard: Leaderboard;
+  grades?: StudentGradeItem[];
 }
 
 // Flaticon / Modern Vector Style Colorful Mood SVGs
@@ -257,12 +292,13 @@ const indonesianMonths = [
   "Juli", "Agustus", "September", "Oktober", "November", "Desember"
 ];
 
-type DashboardTab = "home" | "screening" | "modul" | "jurnal" | "chat_bk" | "badge" | "profil";
+type DashboardTab = "home" | "screening" | "modul" | "nilai" | "jurnal" | "chat_bk" | "badge" | "profil";
 
 const NAV_ITEMS: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
   { id: "home", label: "Home", icon: <Home className="w-4 h-4" /> },
   { id: "screening", label: "Screening Bulanan", icon: <ClipboardList className="w-4 h-4" /> },
   { id: "modul", label: "Modul", icon: <BookOpen className="w-4 h-4" /> },
+  { id: "nilai", label: "Data Nilai", icon: <GraduationCap className="w-4 h-4" /> },
   { id: "jurnal", label: "Jurnal", icon: <FileText className="w-4 h-4" /> },
   { id: "chat_bk", label: "Chat BK", icon: <MessageSquare className="w-4 h-4" /> },
   { id: "badge", label: "Badge", icon: <Award className="w-4 h-4" /> },
@@ -274,7 +310,16 @@ export default function StudentDashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("home");
   const [activeModuleId, setActiveModuleId] = useState<number | null>(null);
   const [selectedModulClassId, setSelectedModulClassId] = useState<number | null>(null);
+  const [selectedModulSubjectId, setSelectedModulSubjectId] = useState<number | "ALL">("ALL");
   const [isModulSubmenuOpen, setIsModulSubmenuOpen] = useState<boolean>(true);
+
+  // States for Nilai Siswa (Student Grades)
+  const [selectedGradeClassId, setSelectedGradeClassId] = useState<number | null>(null);
+  const [selectedGradeSubjectId, setSelectedGradeSubjectId] = useState<string>("ALL");
+  const [gradeSearchQuery, setGradeSearchQuery] = useState<string>("");
+  const [isNilaiSubmenuOpen, setIsNilaiSubmenuOpen] = useState<boolean>(true);
+  const [selectedStudentGradeDetail, setSelectedStudentGradeDetail] = useState<StudentGradeItem | null>(null);
+  const [showStudentAnswersModal, setShowStudentAnswersModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -529,7 +574,18 @@ export default function StudentDashboard() {
         setData(json);
         setError(null);
         if (json.student?.class_id) {
-          setSelectedModulClassId(prev => prev ?? json.student.class_id);
+          setSelectedModulClassId(prev => {
+            if (prev && json.availableClasses?.some((c: any) => c.id === prev)) {
+              return prev;
+            }
+            return json.student.class_id;
+          });
+          setSelectedGradeClassId(prev => {
+            if (prev && json.availableClasses?.some((c: any) => c.id === prev)) {
+              return prev;
+            }
+            return json.student.class_id;
+          });
         }
       } else {
         setError(json.message || "Gagal memuat data dashboard.");
@@ -730,6 +786,493 @@ export default function StudentDashboard() {
       router.push("/");
     } catch {
       router.push("/");
+    }
+  };
+
+  // --- Student Grades Memos & Handlers ---
+  const studentGrades = useMemo(() => {
+    return data?.grades || [];
+  }, [data?.grades]);
+
+  const studentAvailableClasses = useMemo(() => {
+    const list = data?.availableClasses || [];
+    if (list.length > 0) return list;
+    if (data?.student?.class_id) {
+      const yr = data.student.academicYear || data.student.year || "2025/2026";
+      return [{
+        id: data.student.class_id,
+        name: data.student.class_name || data.student.class || "Kelas Aktif",
+        major: data.student.class_major || null,
+        academicYear: `TA ${yr}`,
+        year: yr,
+        displayName: `${data.student.class_name || data.student.class} (TA ${yr})`,
+        isCurrent: true,
+      }];
+    }
+    return [];
+  }, [data?.availableClasses, data?.student]);
+
+  const gradeClasses = studentAvailableClasses;
+
+  const activeGradeClassId = selectedGradeClassId || (gradeClasses[0]?.id ?? data?.student?.class_id ?? null);
+
+  const activeGradeClass = useMemo(() => {
+    return gradeClasses.find((c) => c.id === activeGradeClassId) || gradeClasses[0] || null;
+  }, [gradeClasses, activeGradeClassId]);
+
+  const classGrades = useMemo(() => {
+    if (!activeGradeClassId) return studentGrades;
+    return studentGrades.filter((g) => g.classId === activeGradeClassId);
+  }, [studentGrades, activeGradeClassId]);
+
+  const classGradeSubjects = useMemo(() => {
+    const map = new Map<string, string>();
+    classGrades.forEach((g) => {
+      if (g.subjectName) {
+        map.set(g.subjectName, g.subjectName);
+      }
+    });
+    return Array.from(map.values());
+  }, [classGrades]);
+
+  const subjectSummaries = useMemo(() => {
+    const map = new Map<string, {
+      subjectId: number | null;
+      subjectName: string;
+      teacherName: string;
+      level: string;
+      grades: StudentGradeItem[];
+      avgScore: number;
+      pretestCount: number;
+      posttestCount: number;
+    }>();
+
+    // 1. Seed from curriculum subjects of activeGradeClassId
+    const clsSubjects = (data?.subjects || []).filter((s) => s.class_id === activeGradeClassId);
+    clsSubjects.forEach((sub) => {
+      map.set(sub.name, {
+        subjectId: sub.id,
+        subjectName: sub.name,
+        teacherName: sub.teacher?.name || "-",
+        level: sub.level || "-",
+        grades: [],
+        avgScore: 0,
+        pretestCount: 0,
+        posttestCount: 0,
+      });
+    });
+
+    // 2. Populate grades into each subject
+    classGrades.forEach((g) => {
+      const sName = g.subjectName || "Umum";
+      let entry = map.get(sName);
+      if (!entry) {
+        entry = {
+          subjectId: g.subjectId || null,
+          subjectName: sName,
+          teacherName: "-",
+          level: "-",
+          grades: [],
+          avgScore: 0,
+          pretestCount: 0,
+          posttestCount: 0,
+        };
+        map.set(sName, entry);
+      }
+      entry.grades.push(g);
+      if (g.type === "Pretest") entry.pretestCount++;
+      else if (g.type === "Posttest") entry.posttestCount++;
+    });
+
+    // 3. Compute average score for each subject
+    map.forEach((entry) => {
+      if (entry.grades.length > 0) {
+        const sum = entry.grades.reduce((acc, g) => acc + g.score, 0);
+        entry.avgScore = Math.round(sum / entry.grades.length);
+      } else {
+        entry.avgScore = 0;
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+  }, [data?.subjects, activeGradeClassId, classGrades]);
+
+  const filteredSubjectSummaries = useMemo(() => {
+    if (!gradeSearchQuery.trim()) return subjectSummaries;
+    const q = gradeSearchQuery.toLowerCase();
+    return subjectSummaries.filter((s) =>
+      s.subjectName.toLowerCase().includes(q) ||
+      s.teacherName.toLowerCase().includes(q)
+    );
+  }, [subjectSummaries, gradeSearchQuery]);
+
+  const filteredClassGrades = useMemo(() => {
+    let result = classGrades;
+    if (selectedGradeSubjectId !== "ALL") {
+      result = result.filter((g) => g.subjectName === selectedGradeSubjectId);
+    }
+    if (gradeSearchQuery.trim()) {
+      const q = gradeSearchQuery.toLowerCase();
+      result = result.filter((g) => {
+        const titleMatch = g.title?.toLowerCase().includes(q);
+        const subjMatch = g.subjectName?.toLowerCase().includes(q);
+        const typeMatch = g.type?.toLowerCase().includes(q);
+        return titleMatch || subjMatch || typeMatch;
+      });
+    }
+    return result;
+  }, [classGrades, selectedGradeSubjectId, gradeSearchQuery]);
+
+  const avgGradeScore = useMemo(() => {
+    if (filteredClassGrades.length === 0) return 0;
+    return Math.round(
+      filteredClassGrades.reduce((sum, g) => sum + g.score, 0) / filteredClassGrades.length
+    );
+  }, [filteredClassGrades]);
+
+  const handleExportStudentGradesCSV = () => {
+    if (!data?.student) {
+      alert("Tidak ada data nilai untuk diekspor pada filter ini.");
+      return;
+    }
+    const studentObj = data.student;
+    let headers: string[] = [];
+    let rows: (string | number)[][] = [];
+
+    if (selectedGradeSubjectId === "ALL") {
+      if (subjectSummaries.length === 0) {
+        alert("Tidak ada data nilai untuk diekspor pada filter ini.");
+        return;
+      }
+      headers = [
+        "No",
+        "NIS",
+        "Nama Siswa",
+        "Kelas & TA",
+        "Mata Pelajaran",
+        "Guru Pengampu",
+        "Jumlah Evaluasi",
+        "Nilai Rata-Rata",
+        "Status",
+      ];
+      rows = subjectSummaries.map((s, idx) => [
+        idx + 1,
+        `"${(studentObj.nis || "").replace(/"/g, '""')}"`,
+        `"${(studentObj.name || "").replace(/"/g, '""')}"`,
+        `"${(activeGradeClass?.displayName || "").replace(/"/g, '""')}"`,
+        `"${s.subjectName.replace(/"/g, '""')}"`,
+        `"${s.teacherName.replace(/"/g, '""')}"`,
+        s.grades.length,
+        s.grades.length > 0 ? s.avgScore : "-",
+        s.grades.length === 0 ? "Belum Ada Nilai" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+      ]);
+      rows.push([
+        "",
+        "",
+        "",
+        "",
+        `"RATA-RATA SELURUH MAPEL"`,
+        "",
+        `"${classGrades.length} total kuis"`,
+        avgGradeScore,
+        avgGradeScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+      ]);
+    } else {
+      if (filteredClassGrades.length === 0) {
+        alert("Tidak ada data nilai untuk diekspor pada filter ini.");
+        return;
+      }
+      headers = [
+        "No",
+        "NIS",
+        "Nama Siswa",
+        "Kelas & TA",
+        "Judul Kuis",
+        "Mata Pelajaran",
+        "Tipe Kuis",
+        "Nilai",
+        "Tanggal Selesai",
+      ];
+      rows = filteredClassGrades.map((g, idx) => [
+        idx + 1,
+        `"${(studentObj.nis || "").replace(/"/g, '""')}"`,
+        `"${(studentObj.name || "").replace(/"/g, '""')}"`,
+        `"${(g.className || activeGradeClass?.displayName || "").replace(/"/g, '""')}"`,
+        `"${(g.title || "").replace(/"/g, '""')}"`,
+        `"${(g.subjectName || "").replace(/"/g, '""')}"`,
+        `"${g.type}"`,
+        g.score,
+        `"${(g.completedAt || "").replace(/"/g, '""')}"`,
+      ]);
+      rows.push([
+        "",
+        "",
+        "",
+        "",
+        `"RATA-RATA NILAI"`,
+        `"${selectedGradeSubjectId}"`,
+        "",
+        avgGradeScore,
+        `"Dari ${filteredClassGrades.length} kuis"`,
+      ]);
+    }
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const classNameSlug = (activeGradeClass?.name || "Kelas").replace(/[^a-zA-Z0-9]/g, "_");
+    const subjSlug = selectedGradeSubjectId === "ALL" ? "Rekap_SemuaMapel" : selectedGradeSubjectId.replace(/[^a-zA-Z0-9]/g, "_");
+    link.setAttribute(
+      "download",
+      `Nilai_${studentObj.name.replace(/[^a-zA-Z0-9]/g, "_")}_${classNameSlug}_${subjSlug}_${new Date().toISOString().split("T")[0]}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handlePrintStudentGrades = () => {
+    if (!data?.student) {
+      alert("Tidak ada data siswa untuk dicetak.");
+      return;
+    }
+    const studentObj = data.student;
+
+    const isAll = selectedGradeSubjectId === "ALL";
+
+    const tableHtml = isAll
+      ? `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="text-center" style="width: 35px;">No</th>
+              <th>Mata Pelajaran</th>
+              <th>Guru Pengampu</th>
+              <th class="text-center">Evaluasi Selesai</th>
+              <th class="text-center">Nilai Rata-Rata</th>
+              <th class="text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${subjectSummaries
+              .map(
+                (s, i) => `
+              <tr>
+                <td class="text-center">${i + 1}</td>
+                <td><strong>${s.subjectName}</strong></td>
+                <td>${s.teacherName}</td>
+                <td class="text-center">${s.grades.length > 0 ? `${s.grades.length} Kuis (${s.pretestCount} Pretest, ${s.posttestCount} Posttest)` : "Belum ada evaluasi"}</td>
+                <td class="text-center ${s.grades.length > 0 ? (s.avgScore >= 70 ? "score-pass" : "score-fail") : ""}">${s.grades.length > 0 ? s.avgScore : "-"}</td>
+                <td class="text-center ${s.avgScore >= 70 && s.grades.length > 0 ? "score-pass" : ""}">${s.grades.length === 0 ? "Belum Diambil" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan"}</td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+          <tfoot>
+            <tr style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #64748b;">
+              <td colspan="3" style="border: 1px solid #cbd5e1; background-color: #ffffff;"></td>
+              <td class="text-center" style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-transform: uppercase;">Rata-rata Nilai Seluruh Mapel:</td>
+              <td class="text-center ${avgGradeScore >= 70 ? "score-pass" : "score-fail"}" style="border: 1px solid #cbd5e1; font-size: 13px; font-weight: bold; padding: 10px;">${avgGradeScore}</td>
+              <td class="text-center" style="border: 1px solid #cbd5e1; font-size: 11px; color: #64748b;">(${subjectSummaries.filter(s => s.grades.length > 0).length} mapel dengan nilai)</td>
+            </tr>
+          </tfoot>
+        </table>
+      `
+      : `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="text-center" style="width: 35px;">No</th>
+              <th>Judul Kuis / Modul</th>
+              <th>Mata Pelajaran</th>
+              <th>Kelas & TA</th>
+              <th class="text-center">Tipe</th>
+              <th class="text-center">Nilai</th>
+              <th>Tanggal Selesai</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredClassGrades
+              .map(
+                (g, i) => `
+              <tr>
+                <td class="text-center">${i + 1}</td>
+                <td><strong>${g.title}</strong></td>
+                <td>${g.subjectName}</td>
+                <td>${g.className} <br/><span style="font-size: 10px; color: #64748b;">${g.academicYear}</span></td>
+                <td class="text-center">${g.type}</td>
+                <td class="text-center ${g.score >= 70 ? "score-pass" : "score-fail"}">${g.score}</td>
+                <td>${g.completedAt || "-"}</td>
+              </tr>
+            `
+              )
+              .join("")}
+          </tbody>
+          <tfoot>
+            <tr style="background-color: #f8fafc; font-weight: bold; border-top: 2px solid #64748b;">
+              <td colspan="4" style="border: 1px solid #cbd5e1; background-color: #ffffff;"></td>
+              <td class="text-center" style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; text-transform: uppercase;">Rata-rata Nilai:</td>
+              <td class="text-center ${avgGradeScore >= 70 ? "score-pass" : "score-fail"}" style="border: 1px solid #cbd5e1; font-size: 13px; font-weight: bold; padding: 10px;">${avgGradeScore}</td>
+              <td class="text-center" style="border: 1px solid #cbd5e1; font-size: 11px; color: #64748b;">(Total ${filteredClassGrades.length} kuis)</td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+
+    const studentClassName = activeGradeClass?.name
+      ? (activeGradeClass.major ? `${activeGradeClass.name} ${activeGradeClass.major}` : activeGradeClass.name)
+      : (studentObj.class || "-");
+    const studentAcademicYear = (activeGradeClass?.academicYear || activeGradeClass?.year || studentObj.academicYear || "2025/2026").replace(/^TA\s*/i, "");
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Transkrip Nilai Siswa - ${studentObj.name}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 0;
+            }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 15mm 20mm !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              margin: 0;
+              padding: 15mm 20mm;
+              color: #1e293b;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #334155;
+              padding-bottom: 12px;
+              margin-bottom: 20px;
+            }
+            .title {
+              font-size: 18px;
+              font-weight: bold;
+              text-transform: uppercase;
+              margin: 0;
+              color: #0f172a;
+              letter-spacing: 0.5px;
+            }
+            .subtitle {
+              font-size: 12px;
+              color: #64748b;
+              margin-top: 4px;
+            }
+            .meta-table {
+              width: auto;
+              border: none;
+              border-collapse: collapse;
+              margin-bottom: 20px;
+              font-size: 12.5px;
+              line-height: 1.6;
+            }
+            .meta-table td {
+              border: none !important;
+              padding: 2px 0;
+              text-align: left;
+            }
+            .meta-table .label {
+              font-weight: bold;
+              color: #1e293b;
+              width: 120px;
+            }
+            .meta-table .colon {
+              font-weight: bold;
+              color: #1e293b;
+              width: 16px;
+              text-align: center;
+            }
+            .meta-table .value {
+              color: #0f172a;
+            }
+            table.data-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+            table.data-table th, table.data-table td {
+              border: 1px solid #cbd5e1;
+              padding: 8px 10px;
+              text-align: left;
+            }
+            table.data-table th {
+              background-color: #f1f5f9;
+              font-weight: bold;
+              color: #0f172a;
+            }
+            .text-center { text-align: center !important; }
+            .score-pass { color: #047857; font-weight: bold; }
+            .score-fail { color: #b91c1c; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">DIGIMIND - TRANSKRIP NILAI & EVALUASI SISWA</div>
+            <div class="subtitle">Platform Literasi & Monitoring Hasil Belajar Adaptif</div>
+          </div>
+          <table class="meta-table">
+            <tbody>
+              <tr>
+                <td class="label">nama</td>
+                <td class="colon">:</td>
+                <td class="value">${studentObj.name}</td>
+              </tr>
+              <tr>
+                <td class="label">NIS</td>
+                <td class="colon">:</td>
+                <td class="value">${studentObj.nis || "-"}</td>
+              </tr>
+              <tr>
+                <td class="label">kelas</td>
+                <td class="colon">:</td>
+                <td class="value">${studentClassName}</td>
+              </tr>
+              <tr>
+                <td class="label">Tahun Ajaran</td>
+                <td class="colon">:</td>
+                <td class="value">${studentAcademicYear}</td>
+              </tr>
+            </tbody>
+          </table>
+          ${tableHtml}
+        </body>
+      </html>
+    `;
+
+    let printIframe = document.getElementById("student-print-frame") as HTMLIFrameElement | null;
+    if (!printIframe) {
+      printIframe = document.createElement("iframe");
+      printIframe.id = "student-print-frame";
+      printIframe.style.position = "fixed";
+      printIframe.style.right = "0";
+      printIframe.style.bottom = "0";
+      printIframe.style.width = "0";
+      printIframe.style.height = "0";
+      printIframe.style.border = "0";
+      document.body.appendChild(printIframe);
+    }
+
+    const priDoc = printIframe.contentWindow?.document || printIframe.contentDocument;
+    if (priDoc) {
+      priDoc.open();
+      priDoc.write(html);
+      priDoc.close();
+      setTimeout(() => {
+        printIframe?.contentWindow?.focus();
+        printIframe?.contentWindow?.print();
+      }, 350);
     }
   };
 
@@ -1075,8 +1618,10 @@ export default function StudentDashboard() {
               {NAV_ITEMS.map((item) => {
                 const isItemActive = activeTab === item.id && activeModuleId === null;
                 const isModulItem = item.id === "modul";
+                const isNilaiItem = item.id === "nilai";
                 const availableClasses = data?.availableClasses || [];
                 const currentClassId = selectedModulClassId || student.class_id;
+                const currentGradeClassId = activeGradeClassId;
 
                 return (
                   <div key={item.id} className="space-y-1">
@@ -1086,12 +1631,22 @@ export default function StudentDashboard() {
                         setActiveModuleId(null);
                         if (isModulItem) {
                           if (activeTab === "modul") {
-                            setIsModulSubmenuOpen(prev => !prev);
+                            setIsModulSubmenuOpen((prev) => !prev);
                           } else {
                             setActiveTab("modul");
                             setIsModulSubmenuOpen(true);
-                            if (!selectedModulClassId && student.class_id) {
+                            if (student.class_id && !selectedModulClassId) {
                               setSelectedModulClassId(student.class_id);
+                            }
+                          }
+                        } else if (isNilaiItem) {
+                          if (activeTab === "nilai") {
+                            setIsNilaiSubmenuOpen((prev) => !prev);
+                          } else {
+                            setActiveTab("nilai");
+                            setIsNilaiSubmenuOpen(true);
+                            if (student.class_id && !selectedGradeClassId) {
+                              setSelectedGradeClassId(student.class_id);
                             }
                           }
                         } else {
@@ -1108,42 +1663,226 @@ export default function StudentDashboard() {
                         <span className="shrink-0">{item.icon}</span>
                         <span>{item.label}</span>
                       </div>
-                      {isModulItem && availableClasses.length > 0 && (
-                        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isModulSubmenuOpen && activeTab === "modul" ? "rotate-180" : ""}`} />
+                      {(isModulItem || isNilaiItem) && (
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                            (isModulItem && isModulSubmenuOpen && activeTab === "modul") ||
+                            (isNilaiItem && isNilaiSubmenuOpen && activeTab === "nilai")
+                              ? "rotate-180"
+                              : ""
+                          }`}
+                        />
                       )}
                     </button>
 
-                    {/* Submenu for Modul item in Sidebar */}
-                    {isModulItem && availableClasses.length > 0 && isModulSubmenuOpen && activeTab === "modul" && (
-                      <div className="ml-3 pl-2.5 border-l-2 border-white/25 my-1 space-y-1 animate-fadeIn">
-                        {availableClasses.map((cls) => {
-                          const isSubActive = activeTab === "modul" && currentClassId === cls.id && activeModuleId === null;
+                    {/* Submenu for Modul in Sidebar: Kelas & Mapel */}
+                    {isModulItem && isModulSubmenuOpen && activeTab === "modul" && (
+                      <div className="ml-2 pl-2 border-l border-white/20 my-1.5 space-y-2.5 animate-fadeIn">
+                        {studentAvailableClasses.map((cls) => {
+                          const isClassActive = currentClassId === cls.id;
                           const isCurrentClass = cls.id === student.class_id;
+                          const clsSubjects = (subjects || []).filter((s) => s.class_id === cls.id);
+                          const totalModulCount = clsSubjects.reduce((acc, s) => acc + (s.modules?.length || 0), 0);
 
                           return (
-                            <button
-                              key={cls.id}
-                              type="button"
-                              onClick={() => {
-                                setActiveModuleId(null);
-                                setSelectedModulClassId(cls.id);
-                                setActiveTab("modul");
-                              }}
-                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs font-extrabold transition cursor-pointer ${
-                                isSubActive
-                                  ? "bg-[#5A77DF]/20 text-white shadow-xs font-black ring-1 ring-white/30"
-                                  : "text-white/80 hover:bg-white/15 hover:text-white"
-                              }`}
-                            >
-                              <span className="truncate">🏫 {cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}</span>
-                              {isCurrentClass && (
-                                <span className={`text-[8px] px-1.5 py-0.5 rounded font-mono font-black uppercase ${
-                                  isSubActive ? "bg-white text-[#3E53A2]" : "bg-white/20 text-white"
-                                }`}>
-                                  Aktif
+                            <div key={`modul-cls-${cls.id}`} className="space-y-1">
+                              {/* Class Header Button */}
+                              <button
+                                type="button"
+                                title={cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}
+                                onClick={() => {
+                                  setActiveModuleId(null);
+                                  setSelectedModulClassId(cls.id);
+                                  setSelectedModulSubjectId("ALL");
+                                  setActiveTab("modul");
+                                }}
+                                className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-[11px] font-black tracking-tight text-left transition cursor-pointer ${
+                                  isClassActive
+                                    ? "bg-white/20 text-white font-extrabold ring-1 ring-white/30"
+                                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                                }`}
+                              >
+                                <span className="truncate flex items-center gap-1.5">
+                                  <School className="w-3.5 h-3.5 shrink-0 opacity-90" />
+                                  <span className="truncate">{cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}</span>
                                 </span>
-                              )}
-                            </button>
+                                {isCurrentClass && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded font-mono font-black uppercase bg-white/30 text-white shrink-0 ml-1">
+                                    Aktif
+                                  </span>
+                                )}
+                              </button>
+
+                              {/* Child Menu: Semua Modul & Mapel */}
+                              <div className="ml-2 pl-2 border-l border-white/15 space-y-0.5">
+                                {/* Semua Modul */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveModuleId(null);
+                                    setSelectedModulClassId(cls.id);
+                                    setSelectedModulSubjectId("ALL");
+                                    setActiveTab("modul");
+                                  }}
+                                  className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-medium text-left transition cursor-pointer ${
+                                    isClassActive && selectedModulSubjectId === "ALL"
+                                      ? "bg-white text-[#3E53A2] font-black shadow-xs"
+                                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                                  }`}
+                                >
+                                  <span className="truncate">Semua Modul</span>
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ml-1 ${
+                                      isClassActive && selectedModulSubjectId === "ALL"
+                                        ? "bg-[#3E53A2]/15 text-[#3E53A2]"
+                                        : "bg-white/20 text-white/90"
+                                    }`}
+                                  >
+                                    {totalModulCount}
+                                  </span>
+                                </button>
+
+                                {/* List Mapel */}
+                                {clsSubjects.map((sub) => {
+                                  const isSubActive = isClassActive && selectedModulSubjectId === sub.id;
+                                  const modCount = sub.modules?.length || 0;
+
+                                  return (
+                                    <button
+                                      key={`modul-sub-${cls.id}-${sub.id}`}
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveModuleId(null);
+                                        setSelectedModulClassId(cls.id);
+                                        setSelectedModulSubjectId(sub.id);
+                                        setActiveTab("modul");
+                                      }}
+                                      className={`w-full flex items-center justify-between px-2 py-1 rounded text-[11px] font-medium text-left transition cursor-pointer ${
+                                        isSubActive
+                                          ? "bg-white text-[#3E53A2] font-black shadow-xs"
+                                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="truncate">{sub.name}</span>
+                                      <span
+                                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ml-1 ${
+                                          isSubActive
+                                            ? "bg-[#3E53A2]/15 text-[#3E53A2]"
+                                            : "bg-white/20 text-white/90"
+                                        }`}
+                                      >
+                                        {modCount}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+
+                                {clsSubjects.length === 0 && (
+                                  <p className="text-[10px] text-white/50 italic px-2 py-0.5">
+                                    Belum ada mapel
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Submenu for Data Nilai in Sidebar: Kelas & Mapel */}
+                    {isNilaiItem && isNilaiSubmenuOpen && activeTab === "nilai" && (
+                      <div className="ml-2 pl-2 border-l border-white/20 my-1.5 space-y-2.5 animate-fadeIn">
+                        {studentAvailableClasses.map((cls) => {
+                          const isClassActive = currentGradeClassId === cls.id;
+                          const isCurrentClass = cls.id === student.class_id;
+                          const thisClassGrades = studentGrades.filter((g) => g.classId === cls.id);
+
+                          // Extract unique subject names for this class
+                          const subjectNamesSet = new Set<string>();
+                          (subjects || []).filter((s) => s.class_id === cls.id).forEach((s) => subjectNamesSet.add(s.name));
+                          thisClassGrades.forEach((g) => {
+                            if (g.subjectName) subjectNamesSet.add(g.subjectName);
+                          });
+                          const classSubjectNames = Array.from(subjectNamesSet).sort();
+
+                          return (
+                            <div key={`grade-cls-${cls.id}`} className="space-y-1">
+                              {/* Class Header Button */}
+                              <button
+                                type="button"
+                                title={cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}
+                                onClick={() => {
+                                  setSelectedGradeClassId(cls.id);
+                                  setSelectedGradeSubjectId("ALL");
+                                  setActiveTab("nilai");
+                                }}
+                                className={`w-full flex items-center justify-between px-2 py-1 rounded-md text-[11px] font-black tracking-tight text-left transition cursor-pointer ${
+                                  isClassActive
+                                    ? "bg-white/20 text-white font-extrabold ring-1 ring-white/30"
+                                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                                }`}
+                              >
+                                <span className="truncate flex items-center gap-1.5">
+                                  <School className="w-3.5 h-3.5 shrink-0 opacity-90" />
+                                  <span className="truncate">{cls.displayName || (cls.major ? `${cls.name} ${cls.major}` : cls.name)}</span>
+                                </span>
+                                {isCurrentClass && (
+                                  <span className="text-[8px] px-1 py-0.5 rounded font-mono font-black uppercase bg-white/30 text-white shrink-0 ml-1">
+                                    Aktif
+                                  </span>
+                                )}
+                              </button>
+
+                              {/* Child Menu: Semua Nilai & Mapel */}
+                              <div className="ml-2 pl-2 border-l border-white/15 space-y-0.5">
+                                {/* Semua Nilai */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedGradeClassId(cls.id);
+                                    setSelectedGradeSubjectId("ALL");
+                                    setActiveTab("nilai");
+                                  }}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[11px] font-medium text-left transition cursor-pointer ${
+                                    isClassActive && selectedGradeSubjectId === "ALL"
+                                      ? "bg-white text-[#3E53A2] font-black shadow-xs"
+                                      : "text-white/80 hover:bg-white/10 hover:text-white"
+                                  }`}
+                                >
+                                  <span className="truncate">Semua Nilai</span>
+                                </button>
+
+                                {/* List Mapel */}
+                                {classSubjectNames.map((subjName) => {
+                                  const isSubActive = isClassActive && selectedGradeSubjectId === subjName;
+
+                                  return (
+                                    <button
+                                      key={`grade-sub-${cls.id}-${subjName}`}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedGradeClassId(cls.id);
+                                        setSelectedGradeSubjectId(subjName);
+                                        setActiveTab("nilai");
+                                      }}
+                                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-[11px] font-medium text-left transition cursor-pointer ${
+                                        isSubActive
+                                          ? "bg-white text-[#3E53A2] font-black shadow-xs"
+                                          : "text-white/80 hover:bg-white/10 hover:text-white"
+                                      }`}
+                                    >
+                                      <span className="truncate">{subjName}</span>
+                                    </button>
+                                  );
+                                })}
+
+                                {classSubjectNames.length === 0 && (
+                                  <p className="text-[10px] text-white/50 italic px-2 py-0.5">
+                                    Belum ada data nilai
+                                  </p>
+                                )}
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
@@ -1327,7 +2066,14 @@ export default function StudentDashboard() {
                           }}
                           className="w-full rounded-xl py-3 text-xs font-extrabold transition text-center cursor-pointer bg-[#5A77DF] hover:bg-[#3E53A2] text-white shadow-sm mt-2"
                         >
-                          {data?.monthlyScreening?.isCompletedThisMonth ? "Lihat Riwayat & Detail Screening" : "▶ Mulai Screening Bulanan (SRQ-29)"}
+                          {data?.monthlyScreening?.isCompletedThisMonth ? (
+                            "Lihat Riwayat & Detail Screening"
+                          ) : (
+                            <span className="inline-flex items-center justify-center gap-1.5">
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <span>Mulai Screening Bulanan (SRQ-29)</span>
+                            </span>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -1457,8 +2203,10 @@ export default function StudentDashboard() {
                                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#5A77DF]/30 bg-white text-base overflow-hidden shadow-2xs">
                                     {b.image_url?.startsWith("/") || b.image_url?.startsWith("http") ? (
                                       <img src={b.image_url} alt={b.name} className="h-full w-full object-cover p-0.5" />
+                                    ) : b.image_url ? (
+                                      <span>{b.image_url}</span>
                                     ) : (
-                                      <span>{b.image_url || "🏆"}</span>
+                                      <Award className="w-4 h-4 text-amber-500" />
                                     )}
                                   </div>
                                   <div>
@@ -1693,25 +2441,34 @@ export default function StudentDashboard() {
                 </div>
               )}
 
-              {/* TAB 2: MODUL (CONSOLIDATED WITH CLASS SUB-MENU) */}
+              {/* TAB 2: MODUL (CONSOLIDATED WITH CLASS & SUBJECT IN SIDEBAR) */}
               {activeTab === "modul" && (() => {
-                const availableClasses = data?.availableClasses || [];
+                const availableClasses = studentAvailableClasses;
                 const currentClassId = selectedModulClassId || student.class_id;
 
                 // Filter subjects for selected class
-                const filteredSubjects = subjects.filter((s) => s.class_id === currentClassId);
+                const classSubjects = subjects.filter((s) => s.class_id === currentClassId);
+                const filteredSubjects = selectedModulSubjectId === "ALL"
+                  ? classSubjects
+                  : classSubjects.filter((s) => s.id === selectedModulSubjectId);
+
+                const activeSubjObj = selectedModulSubjectId !== "ALL"
+                  ? classSubjects.find((s) => s.id === selectedModulSubjectId)
+                  : null;
 
                 return (
                   <div className="space-y-6 animate-fadeIn">
                     {/* Top Header Card */}
-                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-4">
+                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
                           <h2 className="text-xl font-black text-zinc-900 tracking-tight">
                             Modul Pembelajaran Sekolah
                           </h2>
                           <p className="text-xs text-zinc-600 leading-relaxed max-w-3xl mt-1 font-medium">
-                            Pilih mata pelajaran di bawah ini. Materi dari kelas terdahulu tetap tersimpan dan dapat diakses melalui sub-menu kelas di sidebar sebelah kiri.
+                            {availableClasses.length > 1
+                              ? "Pilih tingkatan kelas dan mata pelajaran melalui menu sidebar sebelah kiri. Riwayat kelas terdahulu tetap tersimpan."
+                              : "Pilih mata pelajaran melalui menu sidebar sebelah kiri untuk mulai membaca materi modul dan mengerjakan evaluasi."}
                           </p>
                         </div>
                         {(() => {
@@ -1719,9 +2476,12 @@ export default function StudentDashboard() {
                           const isCurrent = currentClassId === student.class_id;
                           return (
                             <div className="shrink-0 px-4 py-2 rounded-2xl bg-[#5A77DF]/10 border border-[#5A77DF]/30 text-left sm:text-right">
-                              <span className="text-[10px] font-mono font-black text-[#5A77DF] uppercase tracking-wider block">Sub-Menu Kelas Aktif</span>
+                              <span className="text-[10px] font-mono font-black text-[#5A77DF] uppercase tracking-wider block">
+                                {activeSubjObj ? `Mapel: ${activeSubjObj.name}` : "Semua Mata Pelajaran"}
+                              </span>
                               <span className="text-sm font-black text-[#3E53A2] flex items-center gap-1.5 mt-0.5">
-                                🏫 {activeClassObj ? (activeClassObj.displayName || (activeClassObj.major ? `${activeClassObj.name} ${activeClassObj.major}` : activeClassObj.name)) : `Kelas ${currentClassId}`}
+                                <School className="w-4 h-4 shrink-0 text-[#3E53A2]" />
+                                <span>{activeClassObj ? (activeClassObj.displayName || (activeClassObj.major ? `${activeClassObj.name} ${activeClassObj.major}` : activeClassObj.name)) : `Kelas ${currentClassId}`}</span>
                                 {isCurrent && (
                                   <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase bg-[#5A77DF] text-white">
                                     Aktif
@@ -1736,7 +2496,11 @@ export default function StudentDashboard() {
 
                     {filteredSubjects.length === 0 ? (
                       <div className="text-center py-12 rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
-                        <p className="text-xs text-zinc-500 italic">Belum ada mata pelajaran terdaftar untuk kelas ini.</p>
+                        <p className="text-xs text-zinc-500 italic">
+                          {selectedModulSubjectId !== "ALL"
+                            ? "Mata pelajaran yang dipilih tidak memiliki modul atau belum terdaftar."
+                            : "Belum ada mata pelajaran terdaftar untuk kelas ini."}
+                        </p>
                       </div>
                     ) : (
                       <div className="grid gap-6">
@@ -1846,6 +2610,468 @@ export default function StudentDashboard() {
                 );
               })()}
 
+              {/* TAB NILAI: DATA NILAI SISWA (MOTHER MENU: KELAS, CHILD MENU: MAPEL) */}
+              {activeTab === "nilai" && (
+                <div className="space-y-6 animate-fadeIn text-left">
+                  {/* Top Bar Header & Export / Print Actions */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-zinc-200/80 shadow-xs">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-3xs font-extrabold uppercase tracking-widest text-[#5A77DF] font-mono">
+                          Transkrip & Evaluasi Hasil Belajar
+                        </span>
+                        <span className="rounded-md bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2 py-0.5 text-3xs font-extrabold text-[#3E53A2]">
+                          {activeGradeClass?.displayName || student.class}
+                        </span>
+                        {selectedGradeSubjectId !== "ALL" && (
+                          <span className="rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-3xs font-extrabold text-purple-700">
+                            Mapel: {selectedGradeSubjectId}
+                          </span>
+                        )}
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-black text-zinc-900">
+                        Data Nilai & Evaluasi Siswa
+                      </h2>
+                      <p className="text-xs text-zinc-500 font-medium mt-0.5">
+                        Pantau seluruh riwayat pengerjaan kuis diagnostik (pretest) dan evaluasi modul (posttest) secara mandiri.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+                      <button
+                        type="button"
+                        onClick={handleExportStudentGradesCSV}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2.5 text-xs font-extrabold text-emerald-800 transition cursor-pointer shadow-2xs"
+                      >
+                        <Download className="w-4 h-4 text-emerald-600" />
+                        <span>Export CSV / Excel</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintStudentGrades}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3.5 py-2.5 text-xs font-extrabold text-zinc-700 transition cursor-pointer shadow-2xs"
+                      >
+                        <Printer className="w-4 h-4 text-zinc-600" />
+                        <span>Cetak Transkrip</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* METRIC OVERVIEW CARDS */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {selectedGradeSubjectId === "ALL" ? (
+                      <>
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Total Mata Pelajaran
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-zinc-800 font-mono">
+                            {subjectSummaries.length} <span className="text-xs font-normal text-zinc-400">Mapel</span>
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Rata-Rata Seluruh Mapel
+                          </span>
+                          <p className={`text-xl sm:text-2xl font-black font-mono ${
+                            avgGradeScore >= 70 ? "text-emerald-600" : "text-rose-600"
+                          }`}>
+                            {avgGradeScore}
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Total Kuis Selesai
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-blue-700 font-mono">
+                            {classGrades.length} <span className="text-xs font-normal text-zinc-400">Kuis</span>
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Mapel Tuntas (≥ 70)
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-purple-700 font-mono">
+                            {subjectSummaries.filter((s) => s.grades.length > 0 && s.avgScore >= 70).length} <span className="text-xs font-normal text-zinc-400">Mapel</span>
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Total Kuis Selesai
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-zinc-800 font-mono">
+                            {filteredClassGrades.length} <span className="text-xs font-normal text-zinc-400">Kuis</span>
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Rata-Rata Nilai Mapel
+                          </span>
+                          <p className={`text-xl sm:text-2xl font-black font-mono ${
+                            avgGradeScore >= 70 ? "text-emerald-600" : "text-rose-600"
+                          }`}>
+                            {avgGradeScore}
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Kuis Pretest
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-purple-700 font-mono">
+                            {filteredClassGrades.filter((g) => g.type === "Pretest").length} <span className="text-xs font-normal text-zinc-400">Kuis</span>
+                          </p>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
+                          <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
+                            Kuis Posttest
+                          </span>
+                          <p className="text-xl sm:text-2xl font-black text-blue-700 font-mono">
+                            {filteredClassGrades.filter((g) => g.type === "Posttest").length} <span className="text-xs font-normal text-zinc-400">Kuis</span>
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* TABEL NILAI SISWA */}
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-[#5A77DF]" />
+                        <h3 className="text-sm font-extrabold text-zinc-800">
+                          {selectedGradeSubjectId === "ALL"
+                            ? "Rekap Nilai Rata-Rata per Mata Pelajaran"
+                            : `Transkrip Lembar Nilai - ${selectedGradeSubjectId}`}
+                        </h3>
+                        {selectedGradeSubjectId !== "ALL" && (
+                          <span className="text-2xs font-bold px-2 py-0.5 rounded-md bg-[#5A77DF]/10 text-[#3E53A2]">
+                            Mapel: {selectedGradeSubjectId}
+                          </span>
+                        )}
+                      </div>
+
+                      {selectedGradeSubjectId !== "ALL" ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGradeSubjectId("ALL")}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF] text-[#3E53A2] hover:text-white text-xs font-bold transition cursor-pointer shadow-2xs self-start sm:self-auto"
+                        >
+                          <ArrowRight className="w-3.5 h-3.5 rotate-180" />
+                          <span>Lihat Semua Nilai (Rata-Rata Mapel)</span>
+                        </button>
+                      ) : (
+                        <span className="text-3xs text-zinc-400 font-mono hidden sm:block">
+                          Menampilkan nilai rata-rata tiap mata pelajaran di kelas ini
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end mb-2">
+                      <div className="relative w-full md:w-72">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                        <input
+                          type="text"
+                          placeholder={
+                            selectedGradeSubjectId === "ALL"
+                              ? "Cari mata pelajaran atau nama guru..."
+                              : "Cari judul kuis atau modul..."
+                          }
+                          value={gradeSearchQuery}
+                          onChange={(e) => setGradeSearchQuery(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:border-[#5A77DF] transition shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-xl border border-zinc-200 shadow-2xs">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-zinc-200 text-left text-xs whitespace-nowrap">
+                          {selectedGradeSubjectId === "ALL" ? (
+                            <>
+                              <thead className="bg-[#f8faff] border-b border-zinc-200">
+                                <tr>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center w-12">
+                                    No
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Mata Pelajaran
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Guru Pengampu
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
+                                    Evaluasi Selesai
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
+                                    Nilai Rata-Rata
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
+                                    Status
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center w-28">
+                                    Aksi
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100 bg-white">
+                                {filteredSubjectSummaries.length === 0 ? (
+                                  <tr>
+                                    <td
+                                      colSpan={7}
+                                      className="px-4 py-12 text-center text-xs text-zinc-400 italic"
+                                    >
+                                      Belum ada mata pelajaran atau riwayat evaluasi untuk {activeGradeClass?.displayName || "kelas ini"}.
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  filteredSubjectSummaries.map((subSummary, idx) => {
+                                    const hasGrades = subSummary.grades.length > 0;
+                                    const isPassed = subSummary.avgScore >= 70;
+
+                                    return (
+                                      <tr key={`summary-${subSummary.subjectName}`} className="hover:bg-[#5A77DF]/5 transition">
+                                        <td className="px-4 py-3.5 text-center font-bold text-zinc-400 font-mono">
+                                          {idx + 1}
+                                        </td>
+                                        <td className="px-4 py-3.5 font-bold text-zinc-900">
+                                          <div className="flex items-center gap-2">
+                                            <BookOpen className="w-4 h-4 text-[#5A77DF] shrink-0" />
+                                            <span>{subSummary.subjectName}</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-3.5 text-zinc-600 font-medium text-xs">
+                                          {subSummary.teacherName}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          {hasGrades ? (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-extrabold bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/20">
+                                              <CheckCircle2 className="w-3 h-3 text-[#5A77DF]" />
+                                              {subSummary.grades.length} Kuis ({subSummary.pretestCount} Pretest, {subSummary.posttestCount} Posttest)
+                                            </span>
+                                          ) : (
+                                            <span className="text-3xs text-zinc-400 italic font-medium">
+                                              Belum ada evaluasi
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          {hasGrades ? (
+                                            <span
+                                              className={`inline-block font-black text-xs font-mono px-3 py-1 rounded-lg border ${
+                                                isPassed
+                                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                  : "bg-rose-50 text-rose-700 border-rose-200"
+                                              }`}
+                                            >
+                                              {subSummary.avgScore}
+                                            </span>
+                                          ) : (
+                                            <span className="text-zinc-400 font-mono font-bold text-xs">-</span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          {hasGrades ? (
+                                            <span
+                                              className={`inline-block text-3xs font-extrabold px-2.5 py-0.5 rounded-md border ${
+                                                isPassed
+                                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                                              }`}
+                                            >
+                                              {isPassed ? "Tuntas" : "Perlu Bimbingan"}
+                                            </span>
+                                          ) : (
+                                            <span className="text-3xs text-zinc-400 font-mono">Belum Diambil</span>
+                                          )}
+                                        </td>
+                                        <td className="px-4 py-3.5 text-center">
+                                          {hasGrades ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => setSelectedGradeSubjectId(subSummary.subjectName)}
+                                              title="Lihat Rincian Nilai Mapel"
+                                              className="p-1.5 rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 text-[#5A77DF] transition cursor-pointer inline-flex items-center justify-center shadow-2xs group"
+                                            >
+                                              <Eye className="w-4 h-4 text-[#5A77DF] group-hover:scale-110 transition-transform" />
+                                            </button>
+                                          ) : (
+                                            <span className="text-3xs text-zinc-400 font-mono">-</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                              {filteredSubjectSummaries.length > 0 && (
+                                <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
+                                  <tr className="divide-x divide-zinc-150">
+                                    <td
+                                      colSpan={4}
+                                      className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                    >
+                                      Rata-Rata Seluruh Mapel:
+                                    </td>
+                                    <td className="px-4 py-3.5 text-center">
+                                      <span
+                                        className={`inline-block font-black text-xs font-mono px-3 py-1 rounded-lg border shadow-xs ${
+                                          avgGradeScore >= 70
+                                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                            : "bg-rose-100 text-rose-800 border-rose-300"
+                                        }`}
+                                      >
+                                        {avgGradeScore}
+                                      </span>
+                                    </td>
+                                    <td colSpan={2} className="px-4 py-3.5 text-zinc-400 text-3xs italic font-medium">
+                                      (Dihitung dari {filteredSubjectSummaries.filter((s) => s.grades.length > 0).length} mapel dengan evaluasi)
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <thead className="bg-[#f8faff] border-b border-zinc-200">
+                                <tr>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center w-12">
+                                    No
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Judul Kuis / Modul
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Mata Pelajaran
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Kelas & TA
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
+                                    Tipe Kuis
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
+                                    Nilai / Skor
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
+                                    Tanggal Selesai
+                                  </th>
+                                  <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center w-20">
+                                    Aksi
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-zinc-100 bg-white">
+                                {filteredClassGrades.length === 0 ? (
+                                  <tr>
+                                    <td
+                                      colSpan={8}
+                                      className="px-4 py-12 text-center text-xs text-zinc-400 italic"
+                                    >
+                                      Belum ada riwayat pengerjaan kuis untuk mata pelajaran "{selectedGradeSubjectId}".
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  filteredClassGrades.map((grade, idx) => (
+                                    <tr key={grade.id} className="hover:bg-[#5A77DF]/5 transition">
+                                      <td className="px-4 py-3.5 text-center font-bold text-zinc-400 font-mono">
+                                        {idx + 1}
+                                      </td>
+                                      <td className="px-4 py-3.5 font-bold text-zinc-900">
+                                        {grade.title}
+                                      </td>
+                                      <td className="px-4 py-3.5 text-zinc-700 font-medium">
+                                        {grade.subjectName}
+                                      </td>
+                                      <td className="px-4 py-3.5 text-zinc-600">
+                                        <span className="font-bold text-zinc-800 text-xs">{grade.className}</span>
+                                        <span className="block text-3xs text-zinc-400 font-mono mt-0.5">{grade.academicYear}</span>
+                                      </td>
+                                      <td className="px-4 py-3.5 text-center">
+                                        <span
+                                          className={`rounded-md px-2.5 py-0.5 text-3xs font-black uppercase tracking-wider border ${
+                                            grade.type === "Pretest"
+                                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                                              : "bg-blue-50 text-blue-700 border-blue-200"
+                                          }`}
+                                        >
+                                          {grade.type}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3.5 text-center">
+                                        <span
+                                          className={`inline-block font-black text-xs font-mono px-2.5 py-0.5 rounded-lg border ${
+                                            grade.score >= 70
+                                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                              : "bg-rose-50 text-rose-700 border-rose-200"
+                                          }`}
+                                        >
+                                          {grade.score}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3.5 text-zinc-500 font-mono text-2xs">
+                                        {grade.completedAt || "-"}
+                                      </td>
+                                      <td className="px-4 py-3.5 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedStudentGradeDetail(grade);
+                                            setShowStudentAnswersModal(true);
+                                          }}
+                                          title="Lihat Lembar Jawaban Kuis"
+                                          className="p-1.5 rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 text-[#5A77DF] transition cursor-pointer inline-flex items-center justify-center shadow-2xs group"
+                                        >
+                                          <Eye className="w-4 h-4 text-[#5A77DF] group-hover:scale-110 transition-transform" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
+                              </tbody>
+                              {filteredClassGrades.length > 0 && (
+                                <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
+                                  <tr className="divide-x divide-zinc-150">
+                                    <td
+                                      colSpan={5}
+                                      className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                    >
+                                      Rata-Rata Nilai Mapel:
+                                    </td>
+                                    <td className="px-4 py-3.5 text-center">
+                                      <span
+                                        className={`inline-block font-black text-xs font-mono px-3 py-1 rounded-lg border shadow-xs ${
+                                          avgGradeScore >= 70
+                                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                            : "bg-rose-100 text-rose-800 border-rose-300"
+                                        }`}
+                                      >
+                                        {avgGradeScore}
+                                      </span>
+                                    </td>
+                                    <td colSpan={2} className="px-4 py-3.5 text-zinc-400 text-3xs italic font-medium">
+                                      (Dihitung dari {filteredClassGrades.length} kuis)
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              )}
+                            </>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* TAB 3: JURNAL */}
               {activeTab === "jurnal" && (
                 <div className="space-y-6 animate-fadeIn">
@@ -1873,7 +3099,7 @@ export default function StudentDashboard() {
                           }}
                           className="text-3xs sm:text-2xs font-extrabold px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-slate-50 text-zinc-700 transition cursor-pointer shadow-2xs flex items-center gap-1"
                         >
-                          <span>◀</span> <span className="hidden sm:inline">Sebelumnya</span>
+                          <ChevronLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Sebelumnya</span>
                         </button>
                         <button
                           type="button"
@@ -1887,7 +3113,7 @@ export default function StudentDashboard() {
                           }}
                           className="text-3xs sm:text-2xs font-extrabold px-2.5 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-slate-50 text-zinc-700 transition cursor-pointer shadow-2xs flex items-center gap-1"
                         >
-                          <span className="hidden sm:inline">Berikutnya</span> <span>▶</span>
+                          <span className="hidden sm:inline">Berikutnya</span> <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -1943,7 +3169,7 @@ export default function StudentDashboard() {
                                   setShowFillModal(true);
                                 }
                               }}
-                              className={`aspect-square max-h-20 sm:max-h-24 md:max-h-28 p-1 sm:p-2 border rounded-xl sm:rounded-2xl flex flex-col justify-between items-center transition-all cursor-pointer text-center relative group overflow-hidden w-full ${
+                              className={`aspect-square max-h-20 sm:max-h-24 md:max-h-28 p-1 sm:p-2 border rounded-xl sm:rounded-2xl flex flex-col items-center transition-all cursor-pointer text-center relative group overflow-hidden w-full ${
                                 journal
                                   ? "bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 border-2 border-[#5A77DF]/50 shadow-xs"
                                   : isFuture
@@ -1955,13 +3181,13 @@ export default function StudentDashboard() {
                                 {day}
                               </span>
                               
-                              {journal && moodEmoji ? (
-                                <div className="transform group-hover:scale-110 transition duration-200 shrink-0 pb-0.5 sm:pb-1 flex items-center justify-center scale-65 sm:scale-125 md:scale-140" title={moodEmoji.label}>
-                                  {moodEmoji.icon}
-                                </div>
-                              ) : (
-                                <div className="h-2 sm:h-4 shrink-0" />
-                              )}
+                              <div className="flex-1 w-full flex items-center justify-center -mt-1 sm:-mt-2">
+                                {journal && moodEmoji ? (
+                                  <div className="transform group-hover:scale-110 transition duration-200 flex items-center justify-center scale-75 sm:scale-115 md:scale-130" title={moodEmoji.label}>
+                                    {moodEmoji.icon}
+                                  </div>
+                                ) : null}
+                              </div>
                             </button>
                           );
                         }
@@ -2124,7 +3350,7 @@ export default function StudentDashboard() {
                         >
                           {data?.allClasses?.map((cls: any) => (
                             <option key={cls.id} value={cls.id}>
-                              {cls.name} ({cls.major || "Umum"}) • TA {cls.academic_year || cls.year || "2025/2026"}
+                              {cls.displayName || `${cls.name} ${cls.major ? `(${cls.major}) ` : ""}• ${cls.academicYear || (cls.academic_year ? `TA ${cls.academic_year}` : "TA 2025/2026")}`}
                             </option>
                           ))}
                         </select>
@@ -2527,7 +3753,7 @@ export default function StudentDashboard() {
                 <div className="space-y-1">
                   <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider font-mono">Hasil Pretest Penempatan</h3>
                   <div className="text-3xl font-black text-[#5A77DF]">
-                    Level: {subjectPretestResult.subjectLevel} ({subjectPretestResult.score}%)
+                    Level: {subjectPretestResult.subjectLevel} (Nilai: {subjectPretestResult.score})
                   </div>
                 </div>
                 <p className="text-xs text-zinc-600 max-w-md mx-auto leading-relaxed font-medium">
@@ -2794,7 +4020,7 @@ export default function StudentDashboard() {
                   return (
                     <div className="space-y-4 text-left">
                       <p className="text-sm font-bold leading-relaxed text-zinc-900">
-                        {monthlySrqIndex + 1}. {q.question}
+                        {monthlySrqIndex + 1}. {q.question.replace(/^No\.?\s*\d+[\.\:\)]\s*/i, "")}
                       </p>
 
                       <div className="grid grid-cols-2 gap-3 pt-2">
@@ -2956,6 +4182,159 @@ export default function StudentDashboard() {
                 className="w-full rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-extrabold text-white transition shadow-md cursor-pointer"
               >
                 Tutup Detail Jurnal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-Up Lembar Jawaban Siswa Modal */}
+      {showStudentAnswersModal && selectedStudentGradeDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-2xl max-h-[90vh] rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl overflow-y-auto custom-scrollbar space-y-5 text-left text-zinc-900">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-zinc-150 pb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-3xs font-extrabold uppercase tracking-widest text-[#5A77DF] font-mono">
+                    Lembar Jawaban Kuis
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-3xs font-black uppercase tracking-wider border ${
+                      selectedStudentGradeDetail.type === "Pretest"
+                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                        : "bg-blue-50 text-blue-700 border-blue-200"
+                    }`}
+                  >
+                    {selectedStudentGradeDetail.type}
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-zinc-900">
+                  {selectedStudentGradeDetail.title}
+                </h3>
+                <div className="flex flex-wrap items-center gap-3 text-2xs text-zinc-500 font-mono mt-1">
+                  <span>Siswa: <strong className="text-zinc-700">{student.name}</strong></span>
+                  <span>•</span>
+                  <span>Kelas: <strong className="text-zinc-700">{selectedStudentGradeDetail.className}</strong></span>
+                  <span>•</span>
+                  <span>Mapel: <strong className="text-zinc-700">{selectedStudentGradeDetail.subjectName}</strong></span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowStudentAnswersModal(false)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quiz Summary Banner */}
+            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 flex items-center justify-between">
+              <div>
+                <p className="text-2xs font-extrabold uppercase tracking-wider text-zinc-400 font-mono">
+                  Mata Pelajaran
+                </p>
+                <p className="text-sm font-extrabold text-zinc-800 mt-0.5">
+                  {selectedStudentGradeDetail.subjectName}
+                </p>
+                <p className="text-3xs text-zinc-500 font-mono mt-0.5">
+                  Diselesaikan: {selectedStudentGradeDetail.completedAt || "-"}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xs font-extrabold uppercase tracking-wider text-zinc-400 font-mono">
+                  Skor Perolehan
+                </p>
+                <span
+                  className={`inline-block text-xl font-black font-mono mt-0.5 ${
+                    selectedStudentGradeDetail.score >= 70 ? "text-emerald-600" : "text-rose-600"
+                  }`}
+                >
+                  {selectedStudentGradeDetail.score}
+                </span>
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-black text-zinc-800 uppercase tracking-wider font-mono">
+                Rincian Jawaban Soal ({selectedStudentGradeDetail.answers?.length || 0} Soal)
+              </h4>
+
+              {(!selectedStudentGradeDetail.answers || selectedStudentGradeDetail.answers.length === 0) ? (
+                <div className="p-6 text-center text-xs text-zinc-400 italic bg-zinc-50 rounded-xl border border-zinc-200">
+                  Tidak ada rincian jawaban tersimpan untuk kuis ini.
+                </div>
+              ) : (
+                selectedStudentGradeDetail.answers.map((ans, qIdx) => (
+                  <div
+                    key={ans.id || qIdx}
+                    className={`p-4 rounded-xl border text-xs space-y-2.5 transition ${
+                      ans.isCorrect
+                        ? "bg-emerald-50/40 border-emerald-200"
+                        : "bg-rose-50/40 border-rose-200"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-extrabold text-zinc-900 leading-relaxed flex-1">
+                        <span className="font-mono text-zinc-500 mr-1.5">{qIdx + 1}.</span>
+                        {ans.question}
+                      </p>
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-black uppercase tracking-wider border ${
+                          ans.isCorrect
+                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            : "bg-rose-100 text-rose-800 border-rose-300"
+                        }`}
+                      >
+                        {ans.isCorrect ? (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>Benar</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-3 h-3 text-rose-600" />
+                            <span>Salah</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1 text-2xs">
+                      <div
+                        className={`p-2 rounded-lg border font-semibold ${
+                          ans.isCorrect
+                            ? "bg-emerald-100/60 border-emerald-200 text-emerald-900"
+                            : "bg-rose-100/60 border-rose-200 text-rose-900"
+                        }`}
+                      >
+                        <span className="font-mono font-bold uppercase mr-1">Jawaban Kamu:</span>{" "}
+                        {ans.selectedOption || "(Tidak Dijawab)"}
+                      </div>
+
+                      {!ans.isCorrect && ans.correctOption && (
+                        <div className="p-2 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-900 font-semibold">
+                          <span className="font-mono font-bold uppercase mr-1">Kunci Jawaban Benar:</span>{" "}
+                          {ans.correctOption}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="pt-4 border-t border-zinc-150 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowStudentAnswersModal(false)}
+                className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-6 py-2.5 text-xs font-extrabold text-white transition cursor-pointer shadow-xs"
+              >
+                Tutup Lembar Jawaban
               </button>
             </div>
           </div>

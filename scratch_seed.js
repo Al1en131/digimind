@@ -68,7 +68,7 @@ async function seed() {
     const questionObj = await prisma.question.create({
       data: {
         quiz_id: pretestQuiz.id,
-        question: `No ${i + 1}. ${qText}`
+        question: qText
       }
     });
 

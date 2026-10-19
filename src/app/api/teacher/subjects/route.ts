@@ -126,16 +126,17 @@ export async function POST(request: Request) {
       );
     }
 
-    if (teacher.type !== "subject") {
+    if (teacher.type !== "subject" && teacher.type !== "bk") {
       return NextResponse.json(
-        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola mata pelajaran." },
+        { success: false, message: "Hanya Guru Mata Pelajaran dan Guru BK yang dapat mengelola kelas pengampuan/binaan." },
         { status: 403 }
       );
     }
 
     const { name, classId } = await request.json();
+    const subjectName = (name || (teacher.type === "bk" ? "Bimbingan Konseling (BK)" : "")).trim();
 
-    if (!name || !classId) {
+    if (!subjectName || !classId) {
       return NextResponse.json(
         { success: false, message: "Nama mata pelajaran dan Kelas wajib diisi." },
         { status: 400 }
@@ -157,7 +158,7 @@ export async function POST(request: Request) {
     // Check if subject already exists for this class
     const existingSubject = await prisma.subject.findFirst({
       where: {
-        name: name.trim(),
+        name: subjectName,
         class_id: parseInt(classId)
       }
     });
@@ -166,7 +167,7 @@ export async function POST(request: Request) {
     if (existingSubject) {
       if (existingSubject.teacher_id === teacher.id) {
         return NextResponse.json(
-          { success: false, message: "Anda sudah mengampu mata pelajaran ini di kelas tersebut." },
+          { success: false, message: "Anda sudah mengampu/membimbing kelas ini." },
           { status: 400 }
         );
       }
@@ -178,7 +179,7 @@ export async function POST(request: Request) {
     } else {
       targetSubject = await prisma.subject.create({
         data: {
-          name: name.trim(),
+          name: subjectName,
           class_id: parseInt(classId),
           teacher_id: teacher.id
         },
@@ -188,13 +189,76 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Mata pelajaran berhasil ditambahkan.",
+      message: "Kelas binaan / pengampuan berhasil ditambahkan.",
       subject: targetSubject
     });
 
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: "Gagal membuat mata pelajaran.", error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Unassign a subject / class assignment
+export async function DELETE(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get("session_token")?.value;
+    const decoded = sessionToken ? verifyJWT(sessionToken) : null;
+
+    if (!decoded || decoded.role !== "teacher") {
+      return NextResponse.json(
+        { success: false, message: "Akses ditolak. Silakan login kembali." },
+        { status: 401 }
+      );
+    }
+
+    const teacher = await prisma.guru.findUnique({
+      where: { user_id: decoded.userId }
+    });
+
+    if (!teacher) {
+      return NextResponse.json(
+        { success: false, message: "Profil guru tidak ditemukan." },
+        { status: 404 }
+      );
+    }
+
+    const { subjectId } = await request.json();
+
+    if (!subjectId) {
+      return NextResponse.json(
+        { success: false, message: "ID Kelas / Mata Pelajaran wajib diisi." },
+        { status: 400 }
+      );
+    }
+
+    const subject = await prisma.subject.findUnique({
+      where: { id: parseInt(subjectId) }
+    });
+
+    if (!subject || subject.teacher_id !== teacher.id) {
+      return NextResponse.json(
+        { success: false, message: "Kelas / Mata Pelajaran tidak ditemukan atau tidak diampu oleh Anda." },
+        { status: 404 }
+      );
+    }
+
+    await prisma.subject.update({
+      where: { id: subject.id },
+      data: { teacher_id: null }
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Kelas pengampuan / binaan berhasil dilepas."
+    });
+
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, message: "Gagal melepaskan kelas pengampuan.", error: error.message },
       { status: 500 }
     );
   }

@@ -123,6 +123,51 @@ export async function POST(request: Request) {
       }
     });
 
+    // Auto-update student risk status and reopen mentoring session if mood is poor
+    if (scoreNum <= 2) {
+      await prisma.siswa.update({
+        where: { id: student.id },
+        data: {
+          risk_flag: true,
+          mental_level: "Perlu Pendampingan",
+          adaptive_mental: "Perlu Pendampingan"
+        }
+      });
+
+      // Check if there is an active intervention, if not reopen a new active intervention session
+      const activeIntervention = await prisma.mentalIntervention.findFirst({
+        where: { student_id: student.id, status: "active" }
+      });
+
+      if (!activeIntervention) {
+        await prisma.mentalIntervention.create({
+          data: {
+            student_id: student.id,
+            name: encryptSensitiveText("Sesi Pendampingan Terbuka (Mood Rendah)") || "Sesi Pendampingan Terbuka",
+            description: encryptSensitiveText(`Siswa melaporkan mood rendah (${scoreNum}/5) pada jurnal harian terbaru. Sesi pendampingan dibuka kembali.`) || `Mood rendah (${scoreNum}/5)`,
+            status: "active",
+            started_at: new Date()
+          }
+        });
+      }
+    } else if (scoreNum >= 4) {
+      const activeIntervention = await prisma.mentalIntervention.findFirst({
+        where: { student_id: student.id, status: "active" }
+      });
+      if (!activeIntervention) {
+        await prisma.siswa.update({
+          where: { id: student.id },
+          data: {
+            risk_flag: false,
+            mental_level: student.mental_level?.includes("Sudah Pendampingan")
+              ? "Sehat & Stabil (Sudah Pendampingan BK)"
+              : "Baik",
+            adaptive_mental: "Stabil"
+          }
+        });
+      }
+    }
+
     // Award "Screen Guard" badge if this is their first journal entry
     const screenGuardBadge = await prisma.badge.findUnique({
       where: { name: "Screen Guard" }

@@ -237,8 +237,8 @@ export default function PretestPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <img
-                src="/screening-illustration.png"
-                alt="DigiMind Screening Illustration"
+                src="/quiz-illustration.png"
+                alt="DigiMind Quiz Illustration"
                 className="h-16 sm:h-20 md:h-22 w-auto object-contain shrink-0 drop-shadow-sm"
               />
               <div className="space-y-1">
@@ -289,7 +289,7 @@ export default function PretestPage() {
                       PERTANYAAN {currentIndex + 1} DARI {quiz?.questions.length}
                     </span>
                     <h2 className="text-base sm:text-lg md:text-xl font-black leading-relaxed text-zinc-900">
-                      {currentQuestion.question}
+                      No {currentIndex + 1}. {currentQuestion.question.replace(/^No\.?\s*\d+[\.\:\)]\s*/i, "")}
                     </h2>
                   </div>
 

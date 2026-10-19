@@ -9,12 +9,23 @@ interface ClassOption {
   id: number;
   name: string;
   major: string;
+  academic_year?: string;
+  year?: string;
+  academicYear?: string;
+  displayName?: string;
   subjects?: {
     id: number;
     name: string;
     teacher_id: number | null;
   }[];
 }
+
+const getClassLabel = (c: ClassOption) => {
+  if (c.displayName) return c.displayName;
+  const majorStr = c.major ? ` ${c.major}` : "";
+  const ta = c.academicYear || (c.academic_year ? `TA ${c.academic_year}` : c.year ? `TA ${c.year}` : "TA 2025/2026");
+  return `${c.name}${majorStr} • ${ta}`;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -317,7 +328,7 @@ export default function RegisterPage() {
                           <option value="" className="text-zinc-500">-- Pilih Kelas Anda --</option>
                           {classes.map((c) => (
                             <option key={c.id} value={c.id}>
-                              {c.name} ({c.major})
+                              {getClassLabel(c)}
                             </option>
                           ))}
                         </select>
@@ -355,7 +366,7 @@ export default function RegisterPage() {
                         <option value="" className="text-zinc-500">-- Semua Kelas / Pilih Kelas Utama --</option>
                         {classes.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} ({c.major})
+                            {getClassLabel(c)}
                           </option>
                         ))}
                       </select>
@@ -376,7 +387,7 @@ export default function RegisterPage() {
                         <option value="" className="text-zinc-500">-- Pilih Kelas Binaan --</option>
                         {classes.map((c) => (
                           <option key={c.id} value={c.id}>
-                            {c.name} ({c.major})
+                            {getClassLabel(c)}
                           </option>
                         ))}
                       </select>
@@ -401,7 +412,7 @@ export default function RegisterPage() {
                           <option value="" className="text-zinc-500">-- Pilih Kelas --</option>
                           {classes.map((c) => (
                             <option key={c.id} value={c.id}>
-                              {c.name} ({c.major})
+                              {getClassLabel(c)}
                             </option>
                           ))}
                         </select>

@@ -78,24 +78,49 @@ export async function GET() {
     let students = [];
     let teacherModuleIds: number[] = [];
 
+    let siblingClassesList: any[] = [];
+    if (teacher.type === "wali_kelas" && teacher.class) {
+      siblingClassesList = await prisma.schoolClass.findMany({
+        where: {
+          name: teacher.class.name,
+          major: teacher.class.major,
+        },
+      });
+    }
+
+    const waliSiblingClassIds = siblingClassesList.map((c) => c.id);
+
     const teacherSubjects = await prisma.subject.findMany({
-      where: teacher.type === "wali_kelas" && teacher.class_id
-        ? { class_id: teacher.class_id }
+      where: teacher.type === "wali_kelas" && (teacher.class_id || waliSiblingClassIds.length > 0)
+        ? {
+            OR: [
+              { class_id: { in: [teacher.class_id, ...waliSiblingClassIds].filter((id): id is number => typeof id === "number") } },
+              { teacher_id: teacher.id },
+            ],
+          }
         : { teacher_id: teacher.id },
       include: {
         class: true,
         teacher: {
           include: {
-            user: { select: { email: true } }
-          }
+            user: { select: { email: true } },
+          },
         },
-        modules: { select: { id: true, title: true } }
-      }
+        modules: { select: { id: true, title: true } },
+      },
     });
+
+    const classIds = Array.from(
+      new Set([
+        ...(teacher.class_id ? [teacher.class_id] : []),
+        ...waliSiblingClassIds,
+        ...teacherSubjects.map((s) => s.class_id).filter((id): id is number => typeof id === "number"),
+      ])
+    );
 
     if (teacher.type === "bk") {
       students = await prisma.siswa.findMany({
-        where: teacher.class_id ? { class_id: teacher.class_id } : undefined,
+        where: classIds.length > 0 ? { class_id: { in: classIds } } : undefined,
         include: {
           class: true,
           subject_levels: true,
@@ -116,10 +141,14 @@ export async function GET() {
                 include: {
                   module: {
                     include: {
-                      subject: true
+                      subject: {
+                        include: { class: true }
+                      }
                     }
                   },
-                  subject: true
+                  subject: {
+                    include: { class: true }
+                  }
                 }
               },
               answers: {
@@ -138,10 +167,6 @@ export async function GET() {
       });
     } else {
       teacherModuleIds = teacherSubjects.flatMap(s => s.modules.map(m => m.id));
-
-      const classIds = teacher.type === "wali_kelas" && teacher.class_id
-        ? [teacher.class_id]
-        : Array.from(new Set(teacherSubjects.map(s => s.class_id)));
 
       const teacherSubjectIdsList = teacherSubjects.map(s => s.id);
 
@@ -173,10 +198,14 @@ export async function GET() {
                 include: {
                   module: {
                     include: {
-                      subject: true
+                      subject: {
+                        include: { class: true }
+                      }
                     }
                   },
-                  subject: true
+                  subject: {
+                    include: { class: true }
+                  }
                 }
               },
               answers: {
@@ -248,9 +277,10 @@ export async function GET() {
     const studentSummaries = students.map((student) => {
       const recentJournals = student.mental_journals || [];
       const latestJournal = recentJournals[0];
+      const latestMood = latestJournal ? latestJournal.mood_score : null;
       const averageMood = recentJournals.length > 0
         ? Math.round(recentJournals.reduce((sum, journal) => sum + journal.mood_score, 0) / recentJournals.length)
-        : 3;
+        : 0;
       const screenTime = parseScreenTime(latestJournal?.activities ?? null);
 
       // 1. Mental health progress
@@ -271,23 +301,28 @@ export async function GET() {
         const teacherSubjLevel = student.subject_levels.find((sl: any) => teacherSubjectIdsSet.has(sl.subject_id));
         if (teacherSubjLevel) {
           rawStudentLevelName = teacherSubjLevel.level_name;
+        } else if (teacher.type === "subject") {
+          rawStudentLevelName = "Belum Pretest";
         } else {
           rawStudentLevelName = student.subject_levels[0].level_name;
         }
+      } else {
+        rawStudentLevelName = "Belum Pretest";
       }
 
       const targetLevelStr = rawStudentLevelName.trim().toLowerCase();
       
-      let levelNameDisplay = "Basic";
+      let levelNameDisplay = "Belum Pretest";
       if (targetLevelStr.startsWith("advan")) levelNameDisplay = "Advanced";
       else if (targetLevelStr.startsWith("intermed")) levelNameDisplay = "Intermediate";
       else if (targetLevelStr.startsWith("basic") || targetLevelStr.startsWith("beginner")) levelNameDisplay = "Basic";
+      else if (targetLevelStr === "belum pretest") levelNameDisplay = "Belum Pretest";
       else if (rawStudentLevelName) levelNameDisplay = rawStudentLevelName;
 
       // 3. Subject Modules progress (Filtered ONLY for teacher's subject(s) AND student's placed level)
       const moduleProgressesList = allModulesWithSubject
         .filter((mod) => {
-          const matchesSubject = teacher.type === "bk"
+          const matchesSubject = (teacher.type === "bk" || teacher.type === "wali_kelas")
             ? mod.subject?.class_id === student.class_id
             : teacherSubjectIdsSet.size > 0
             ? mod.subject_id ? teacherSubjectIdsSet.has(mod.subject_id) && mod.subject?.class_id === student.class_id : false
@@ -330,7 +365,7 @@ export async function GET() {
         ? Math.round(totalModProgSum / moduleProgressesList.length)
         : 0;
 
-      // Format Pretests (Excluding Screening / Mental Pretests)
+      // Format Pretests (Excluding Screening / Mental Pretests, scoped to teacher's subjects for subject teachers)
       const pretests = student.quiz_attempts
         .filter((a) => {
           if (a.quiz.type !== "pretest") return false;
@@ -342,43 +377,78 @@ export async function GET() {
             titleLower.includes("mental") ||
             subjectNameLower.includes("mental") ||
             !a.quiz.subject_id;
-          return !isScreening;
-        })
-        .map((a) => ({
-          id: a.id,
-          quizId: a.quiz_id,
-          title: a.quiz.title,
-          subjectId: a.quiz.subject_id,
-          subjectName: a.quiz.subject?.name || "Pretest",
-          score: a.score,
-          completedAt: a.completed_at
-            ? new Date(a.completed_at).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "-",
-          answers: a.answers.map((ans) => {
-            const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
-            return {
-              id: ans.id,
-              question: ans.question.question,
-              selectedOption: ans.option.option_text,
-              isCorrect: ans.option.is_correct ?? false,
-              correctOption: correctOpt ? correctOpt.option_text : null,
-            };
-          }),
-        }));
+          if (isScreening) return false;
 
-      // Format Posttests (Keep ONLY the LATEST attempt per module)
+          // Scope strictly to this teacher's assigned subjects for subject teachers
+          if (teacher.type === "subject") {
+            return a.quiz.subject_id ? teacherSubjectIdsSet.has(a.quiz.subject_id) : false;
+          }
+          return true;
+        })
+        .map((a) => {
+          const quizClassObj = a.quiz.subject?.class;
+          const quizClassYear = quizClassObj
+            ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
+            : formatAcademicYear(student.class.created_at, student.class.academic_year);
+          const quizClassName = quizClassObj
+            ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
+            : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
+
+          return {
+            id: a.id,
+            quizId: a.quiz_id,
+            title: a.quiz.title,
+            subjectId: a.quiz.subject_id,
+            subjectName: a.quiz.subject?.name || "Pretest",
+            className: quizClassName,
+            classYear: quizClassYear,
+            academicYear: `TA ${quizClassYear}`,
+            score: a.score,
+            completedAt: a.completed_at
+              ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "-",
+            answers: a.answers.map((ans) => {
+              const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+              return {
+                id: ans.id,
+                question: ans.question.question,
+                selectedOption: ans.option.option_text,
+                isCorrect: ans.option.is_correct ?? false,
+                correctOption: correctOpt ? correctOpt.option_text : null,
+              };
+            }),
+          };
+        });
+
+      // Format Posttests (Keep ONLY the LATEST attempt per module, scoped to teacher's subjects)
       const latestPosttestsMap = new Map();
       student.quiz_attempts
-        .filter((a) => a.quiz.type === "posttest")
+        .filter((a) => {
+          if (a.quiz.type !== "posttest") return false;
+          // Scope strictly to this teacher's assigned subjects for subject teachers
+          if (teacher.type === "subject") {
+            const subjId = a.quiz.module?.subject_id || a.quiz.subject_id;
+            return subjId ? teacherSubjectIdsSet.has(subjId) : false;
+          }
+          return true;
+        })
         .forEach((a) => {
           const key = a.quiz.module_id || a.quiz_id;
           if (!latestPosttestsMap.has(key)) {
+            const quizClassObj = a.quiz.module?.subject?.class || a.quiz.subject?.class;
+            const quizClassYear = quizClassObj
+              ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
+              : formatAcademicYear(student.class.created_at, student.class.academic_year);
+            const quizClassName = quizClassObj
+              ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
+              : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
+
             latestPosttestsMap.set(key, {
               id: a.id,
               quizId: a.quiz_id,
@@ -387,6 +457,9 @@ export async function GET() {
               moduleTitle: a.quiz.module?.title || a.quiz.title,
               subjectId: a.quiz.module?.subject_id || a.quiz.subject_id,
               subjectName: a.quiz.module?.subject?.name || a.quiz.subject?.name || "Modul Pelajaran",
+              className: quizClassName,
+              classYear: quizClassYear,
+              academicYear: `TA ${quizClassYear}`,
               score: a.score,
               completedAt: a.completed_at
                 ? new Date(a.completed_at).toLocaleDateString("id-ID", {
@@ -412,28 +485,75 @@ export async function GET() {
         });
       const posttests = Array.from(latestPosttestsMap.values());
 
-      const isResolved = student.risk_flag === false;
-      const riskFlag = isResolved ? false : (Boolean(student.risk_flag) || averageMood <= 2 || screenTime > 7);
-      const mentalStatus = student.mental_level || (riskFlag ? "Perlu Pendampingan" : averageMood >= 4 ? "Baik" : averageMood === 3 ? "Waspada" : "Perlu Pendampingan");
+      // Risk & Status determination:
+      // If student has a recent low mood (latest journal <= 2), average mood <= 2, explicit risk_flag === true, or excessive screen time:
+      // An alert MUST be active, and pendampingan session is opened/reopened even if previously resolved!
+      const hasRecentLowMood = (latestMood !== null && latestMood <= 2) || (recentJournals.length > 0 && averageMood <= 2);
+      const hasHighScreenTime = screenTime > 7;
+
+      let riskFlag = false;
+      let mentalStatus = "Stabil";
+      let riskReason = "Stabil";
+
+      if (hasRecentLowMood || hasHighScreenTime || student.risk_flag === true) {
+        riskFlag = true;
+        mentalStatus = "Perlu Pendampingan";
+        riskReason = (latestMood !== null && latestMood <= 2)
+          ? `Mood terbaru ${latestMood}/5 (Perlu Pendampingan)${hasHighScreenTime ? ` • screen time ${screenTime} jam` : ""}`
+          : averageMood <= 2 && recentJournals.length > 0
+          ? `Mood rata-rata ${averageMood}/5 (Waspada)${hasHighScreenTime ? ` • screen time ${screenTime} jam` : ""}`
+          : hasHighScreenTime
+          ? `Screen time tinggi (${screenTime} jam)`
+          : "Terindikasi perlu pendampingan";
+      } else {
+        if (student.mental_level?.includes("Sudah Pendampingan")) {
+          riskFlag = false;
+          mentalStatus = "Sudah Pendampingan";
+          riskReason = "Sudah Pendampingan BK";
+        } else if (recentJournals.length === 0) {
+          riskFlag = false;
+          mentalStatus = student.mental_level || "Belum Ada Jurnal";
+          riskReason = "Belum Ada Jurnal";
+        } else if (averageMood >= 4) {
+          riskFlag = false;
+          mentalStatus = "Baik";
+          riskReason = "Stabil";
+        } else {
+          riskFlag = false;
+          mentalStatus = "Stabil";
+          riskReason = "Stabil";
+        }
+      }
+
+      const isCurrentClass = classIds.includes(student.class_id);
+      const studentClassYear = formatAcademicYear(student.class.created_at, student.class.academic_year);
+      const fullClassName = student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name;
+
+      const displayMood = latestMood !== null ? latestMood : (averageMood > 0 ? averageMood : 0);
 
       return {
         id: student.id,
         nis: student.nis || "-",
         name: student.name,
         classId: student.class_id,
-        className: student.class.name,
+        className: fullClassName,
+        classMajor: student.class.major || "",
+        classYear: studentClassYear,
+        academicYear: `TA ${studentClassYear}`,
+        isCurrentClass,
+        isPastStudent: !isCurrentClass,
         levelName: levelNameDisplay,
         literacyProgress,
         mentalHealthProgress,
         subjectProgress,
         mentalStatus,
         screenTime,
-        moodScore: averageMood,
+        moodScore: displayMood,
+        latestMood,
+        averageMood,
         modulesCompleted: student.completed_modules.length,
         riskFlag,
-        riskReason: riskFlag
-          ? `Mood rata-rata ${averageMood}/5${screenTime > 7 ? ` • screen time ${screenTime} jam` : ""}`
-          : "Stabil",
+        riskReason,
         latestJournal: latestJournal
           ? {
               moodScore: latestJournal.mood_score,
@@ -447,36 +567,41 @@ export async function GET() {
       };
     });
 
-    const alerts = studentSummaries.filter((student) => student.riskFlag);
+    // CRITICAL: Only count ACTIVE students currently enrolled in the teacher's active classes for graphs and dashboard statistics
+    const activeStudentSummaries = studentSummaries.filter((student) => student.isCurrentClass);
+    const alerts = activeStudentSummaries.filter((student) => student.riskFlag);
     
-    // Calculate averages
-    const averageMood = Math.round(
-      studentSummaries.reduce((sum, student) => sum + student.moodScore, 0) / Math.max(studentSummaries.length, 1)
-    );
-    const averageMentalHealthProgress = Math.round(
-      studentSummaries.reduce((sum, student) => sum + student.mentalHealthProgress, 0) / Math.max(studentSummaries.length, 1)
-    );
-    const averageLiteracyProgress = Math.round(
-      studentSummaries.reduce((sum, student) => sum + student.literacyProgress, 0) / Math.max(studentSummaries.length, 1)
-    );
-    const averageSubjectProgress = Math.round(
-      studentSummaries.reduce((sum, student) => sum + student.subjectProgress, 0) / Math.max(studentSummaries.length, 1)
-    );
+    // Calculate averages based strictly on ACTIVE students in teacher's current classes
+    const activeCount = activeStudentSummaries.length;
+    const averageMood = activeCount > 0
+      ? Math.round(activeStudentSummaries.reduce((sum, student) => sum + student.moodScore, 0) / activeCount)
+      : 0;
+    const averageMentalHealthProgress = activeCount > 0
+      ? Math.round(activeStudentSummaries.reduce((sum, student) => sum + student.mentalHealthProgress, 0) / activeCount)
+      : 0;
+    const averageLiteracyProgress = activeCount > 0
+      ? Math.round(activeStudentSummaries.reduce((sum, student) => sum + student.literacyProgress, 0) / activeCount)
+      : 0;
+    const averageSubjectProgress = activeCount > 0
+      ? Math.round(activeStudentSummaries.reduce((sum, student) => sum + student.subjectProgress, 0) / activeCount)
+      : 0;
     
-    const lowMoodCount = studentSummaries.filter((student) => student.moodScore <= 2).length;
-    const lowMoodPercentage = students.length > 0 ? Math.round((lowMoodCount / students.length) * 100) : 0;
+    const lowMoodCount = activeStudentSummaries.filter((student) => (student.moodScore > 0 && student.moodScore <= 2) || student.riskFlag).length;
+    const lowMoodPercentage = activeCount > 0 ? Math.round((lowMoodCount / activeCount) * 100) : 0;
 
-    const interventions = students.flatMap((student) =>
-      (student.interventions || []).map((intervention) => ({
-        id: intervention.id,
-        studentName: student.name,
-        note: decryptSensitiveText(intervention.description) || decryptSensitiveText(intervention.name),
-        status: normalizeStatus(intervention.status || null),
-        updatedAt: intervention.updated_at
-          ? new Date(intervention.updated_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
-          : "baru",
-      }))
-    );
+    const interventions = students
+      .filter((s) => classIds.includes(s.class_id))
+      .flatMap((student) =>
+        (student.interventions || []).map((intervention) => ({
+          id: intervention.id,
+          studentName: student.name,
+          note: decryptSensitiveText(intervention.description) || decryptSensitiveText(intervention.name),
+          status: normalizeStatus(intervention.status || null),
+          updatedAt: intervention.updated_at
+            ? new Date(intervention.updated_at).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+            : "baru",
+        }))
+      );
 
     const aiInsights = [
       `Rata-rata progres literasi digital kelas ${averageLiteracyProgress}%, mental health ${averageMentalHealthProgress}%, dan mapel ${averageSubjectProgress}%.`,
@@ -486,9 +611,24 @@ export async function GET() {
       `Intervensi aktif saat ini sebanyak ${interventions.filter((item) => item.status === "Aktif").length} catatan.`,
     ];
 
-    const teacherClassesList = Array.from(
-      new Map(teacherSubjects.map((s) => [s.class.id, s.class])).values()
-    );
+    const teacherClassesMap = new Map();
+    if (teacher.class) {
+      teacherClassesMap.set(teacher.class.id, teacher.class);
+    }
+    for (const sc of siblingClassesList) {
+      teacherClassesMap.set(sc.id, sc);
+    }
+    for (const s of teacherSubjects) {
+      if (s.class) {
+        teacherClassesMap.set(s.class.id, s.class);
+      }
+    }
+    for (const st of students) {
+      if (st.class) {
+        teacherClassesMap.set(st.class.id, st.class);
+      }
+    }
+    const teacherClassesList = Array.from(teacherClassesMap.values());
 
     return NextResponse.json({
       success: true,
@@ -503,21 +643,24 @@ export async function GET() {
         class_id: teacher.class_id,
         assignedClass: teacher.class ? {
           id: teacher.class.id,
-          name: teacher.class.name,
+          name: teacher.class.major ? `${teacher.class.name} ${teacher.class.major}` : teacher.class.name,
+          rawName: teacher.class.name,
           major: teacher.class.major,
           year: formatAcademicYear(teacher.class.created_at, teacher.class.academic_year),
-          displayName: `${teacher.class.name} (${teacher.class.major}) • TA ${formatAcademicYear(teacher.class.created_at, teacher.class.academic_year)}`
+          displayName: `${teacher.class.name} ${teacher.class.major ? `(${teacher.class.major})` : ""} • TA ${formatAcademicYear(teacher.class.created_at, teacher.class.academic_year)}`
         } : null,
         subjects: teacherSubjects.map((s) => {
           const classYear = formatAcademicYear(s.class.created_at, s.class.academic_year);
+          const fullClassName = s.class.major ? `${s.class.name} ${s.class.major}` : s.class.name;
           return {
             id: s.id,
             name: s.name,
             classId: s.class_id,
-            className: s.class.name,
+            className: fullClassName,
+            rawClassName: s.class.name,
             classMajor: s.class.major,
             classYear,
-            displayName: `${s.name} - ${s.class.name} ${s.class.major ? `(${s.class.major})` : ""} (${classYear})`,
+            displayName: `${s.name} - ${fullClassName} (TA ${classYear})`,
             assignedTeacher: s.teacher
               ? {
                   id: s.teacher.id,
@@ -533,18 +676,20 @@ export async function GET() {
         }),
         classes: teacherClassesList.map((c) => {
           const classYear = formatAcademicYear(c.created_at, c.academic_year);
+          const fullClassName = c.major ? `${c.name} ${c.major}` : c.name;
           return {
             id: c.id,
-            name: c.name,
+            name: fullClassName,
+            rawName: c.name,
             major: c.major,
             year: classYear,
             academicYear: `TA ${classYear}`,
-            displayName: `${c.name} (${c.major}) • ${classYear}`
+            displayName: `${fullClassName} • TA ${classYear}`
           };
         }),
       },
       classSummary: {
-        totalStudents: students.length,
+        totalStudents: activeStudentSummaries.length,
         averageProgress: averageSubjectProgress,
         averageMood,
         averageMentalHealthProgress,
@@ -553,7 +698,7 @@ export async function GET() {
         lowMoodCount,
         lowMoodPercentage,
         riskCount: alerts.length,
-        classes: Array.from(new Set(students.map((student) => student.class.name))),
+        classes: Array.from(new Set(activeStudentSummaries.map((student) => student.className))),
       },
       students: studentSummaries,
       alerts,

@@ -8,9 +8,11 @@ async function getTeacherFromSession() {
   const sessionToken = cookieStore.get("session_token")?.value;
   const decoded = sessionToken ? verifyJWT(sessionToken) : null;
 
-  if (!decoded || decoded.role !== "teacher") {
-    return null;
+  if (!decoded) return null;
+  if (decoded.role === "admin") {
+    return { id: -1, type: "subject", name: "Admin", is_admin: true };
   }
+  if (decoded.role !== "teacher") return null;
 
   return prisma.guru.findUnique({
     where: { user_id: decoded.userId },
@@ -89,10 +91,10 @@ async function saveQuizInTx(
 // POST: Add module, pre-test, and post-test under a subject
 export async function POST(request: Request) {
   try {
-    const teacher = await getTeacherFromSession();
-    if (!teacher || teacher.type !== "subject") {
+    const teacher = await getTeacherFromSession() as any;
+    if (!teacher || (teacher.type !== "subject" && !teacher.is_admin)) {
       return NextResponse.json(
-        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
+        { success: false, message: "Hanya Guru Mata Pelajaran atau Admin yang dapat mengelola modul." },
         { status: 403 }
       );
     }
@@ -119,7 +121,7 @@ export async function POST(request: Request) {
     }
 
     const subject = await prisma.subject.findFirst({
-      where: {
+      where: teacher.is_admin ? { id: parseInt(subjectId) } : {
         id: parseInt(subjectId),
         teacher_id: teacher.id,
       },
@@ -190,10 +192,10 @@ export async function POST(request: Request) {
 // PUT: Edit module and post-test
 export async function PUT(request: Request) {
   try {
-    const teacher = await getTeacherFromSession();
-    if (!teacher || teacher.type !== "subject") {
+    const teacher = await getTeacherFromSession() as any;
+    if (!teacher || (teacher.type !== "subject" && !teacher.is_admin)) {
       return NextResponse.json(
-        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
+        { success: false, message: "Hanya Guru Mata Pelajaran atau Admin yang dapat mengelola modul." },
         { status: 403 }
       );
     }
@@ -232,7 +234,7 @@ export async function PUT(request: Request) {
       },
     });
 
-    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
+    if (!targetModule || (!teacher.is_admin && targetModule.subject?.teacher_id !== teacher.id)) {
       return NextResponse.json(
         { success: false, message: "Modul tidak ditemukan atau bukan milik Anda." },
         { status: 404 }
@@ -295,10 +297,10 @@ export async function PUT(request: Request) {
 // DELETE: Delete a module
 export async function DELETE(request: Request) {
   try {
-    const teacher = await getTeacherFromSession();
-    if (!teacher || teacher.type !== "subject") {
+    const teacher = await getTeacherFromSession() as any;
+    if (!teacher || (teacher.type !== "subject" && !teacher.is_admin)) {
       return NextResponse.json(
-        { success: false, message: "Hanya Guru Mata Pelajaran yang dapat mengelola modul." },
+        { success: false, message: "Hanya Guru Mata Pelajaran atau Admin yang dapat mengelola modul." },
         { status: 403 }
       );
     }
@@ -319,7 +321,7 @@ export async function DELETE(request: Request) {
       include: { subject: true },
     });
 
-    if (!targetModule || targetModule.subject?.teacher_id !== teacher.id) {
+    if (!targetModule || (!teacher.is_admin && targetModule.subject?.teacher_id !== teacher.id)) {
       return NextResponse.json(
         { success: false, message: "Modul tidak ditemukan atau bukan milik Anda." },
         { status: 404 }

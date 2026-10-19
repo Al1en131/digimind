@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   LayoutDashboard,
@@ -32,7 +32,11 @@ import {
   Lock,
   Bell,
   Settings,
-  Menu
+  Menu,
+  Download,
+  Printer,
+  Upload,
+  FileSpreadsheet
 } from "lucide-react";
 
 type DashboardTab = "overview" | "users" | "teachers" | "actors" | "classes" | "subjects" | "modules" | "quizzes" | "pretest_screening" | "attempts" | "screening";
@@ -93,6 +97,41 @@ export default function AdminDashboardPage() {
   const [showOldPass, setShowOldPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
+
+  // Custom Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const showConfirmDialog = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    confirmText = "Hapus",
+    cancelText = "Batal"
+  ) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      confirmText,
+      cancelText,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        await onConfirm();
+      },
+    });
+  };
 
   const handleChangePasswordAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -357,24 +396,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleUserDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus user ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "user", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleUserDelete = (id: number) => {
+    showConfirmDialog("Hapus Akun Pengguna", "Apakah Anda yakin ingin menghapus user ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "user", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus user.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus user.", "error");
-    }
+    });
   };
 
   // CLASS CRUD
@@ -425,24 +465,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleClassDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus kelas ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "class", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleClassDelete = (id: number) => {
+    showConfirmDialog("Hapus Data Kelas", "Apakah Anda yakin ingin menghapus kelas ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "class", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus kelas.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus kelas.", "error");
-    }
+    });
   };
 
   // TEACHER CRUD & ASSIGNMENT
@@ -584,24 +625,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleActorDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus akun Aktor Admin ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "admin_actor", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleActorDelete = (id: number) => {
+    showConfirmDialog("Hapus Aktor Admin", "Apakah Anda yakin ingin menghapus akun Aktor Admin ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "admin_actor", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus aktor admin.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus aktor admin.", "error");
-    }
+    });
   };
 
   const togglePermission = (permKey: string) => {
@@ -658,24 +700,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleSubjectDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus mata pelajaran ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "subject", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleSubjectDelete = (id: number) => {
+    showConfirmDialog("Hapus Mata Pelajaran", "Apakah Anda yakin ingin menghapus mata pelajaran ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "subject", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus mata pelajaran.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus mata pelajaran.", "error");
-    }
+    });
   };
 
   // MODULE CRUD
@@ -735,24 +778,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleModuleDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus modul ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "module", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleModuleDelete = (id: number) => {
+    showConfirmDialog("Hapus Modul", "Apakah Anda yakin ingin menghapus modul ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "module", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus modul.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus modul.", "error");
-    }
+    });
   };
 
   // QUIZ CRUD
@@ -803,24 +847,25 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleQuizDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus kuis ini?")) return;
-    try {
-      const res = await fetch("/api/admin/dashboard", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "quiz", data: { id } })
-      });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
-        loadData();
-      } else {
-        triggerMessage(data.message, "error");
+  const handleQuizDelete = (id: number) => {
+    showConfirmDialog("Hapus Kuis", "Apakah Anda yakin ingin menghapus kuis ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "quiz", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          loadData();
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus kuis.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus kuis.", "error");
-    }
+    });
   };
 
   // QUIZ QUESTIONS CRUD
@@ -902,17 +947,81 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleQuestionDelete = async (id: number) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus pertanyaan ini?")) return;
+  const handleQuestionDelete = (id: number) => {
+    showConfirmDialog("Hapus Pertanyaan", "Apakah Anda yakin ingin menghapus pertanyaan ini?", async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", entity: "question", data: { id } })
+        });
+        const data = await res.json();
+        if (data.success) {
+          triggerMessage(data.message, "success");
+          // Reload questions list
+          const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
+          const freshData = await response.json();
+          if (freshData.success) {
+            setQuizzes(freshData.quizzes || []);
+            const freshQuiz = (freshData.quizzes || []).find((q: any) => q.id === activeQuizForQuestions.id);
+            if (freshQuiz) {
+              setActiveQuizForQuestions(freshQuiz);
+            }
+          }
+        } else {
+          triggerMessage(data.message, "error");
+        }
+      } catch {
+        triggerMessage("Gagal menghapus pertanyaan.", "error");
+      }
+    });
+  };
+
+  const questionsFileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingQuestions, setIsImportingQuestions] = useState(false);
+
+  const handleImportQuestionsAdmin = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeQuizForQuestions) return;
+
+    setIsImportingQuestions(true);
     try {
-      const res = await fetch("/api/admin/dashboard", {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/quiz/import-questions", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await res.json();
+
+      if (!result.success) {
+        triggerMessage(result.message || "Gagal mengimpor soal dari file.", "error");
+        return;
+      }
+
+      // Bulk create questions for activeQuizForQuestions
+      const saveRes = await fetch("/api/admin/dashboard", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", entity: "question", data: { id } })
+        body: JSON.stringify({
+          action: "bulk-create",
+          entity: "question",
+          data: {
+            quiz_id: activeQuizForQuestions.id,
+            questions: result.questions.map((q: any) => ({
+              question: q.question,
+              options: q.options.map((optText: string, oIdx: number) => ({
+                option_text: optText,
+                is_correct: oIdx === q.correctIndex
+              }))
+            }))
+          }
+        })
       });
-      const data = await res.json();
-      if (data.success) {
-        triggerMessage(data.message, "success");
+      const saveData = await saveRes.json();
+      if (saveData.success) {
+        triggerMessage(`Berhasil mengimpor ${result.count} soal dari file!`, "success");
         // Reload questions list
         const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
         const freshData = await response.json();
@@ -924,10 +1033,188 @@ export default function AdminDashboardPage() {
           }
         }
       } else {
-        triggerMessage(data.message, "error");
+        triggerMessage(saveData.message || "Gagal menyimpan soal ke kuis.", "error");
       }
-    } catch {
-      triggerMessage("Gagal menghapus pertanyaan.", "error");
+    } catch (err: any) {
+      triggerMessage("Terjadi kesalahan saat memproses file: " + (err?.message || "Error"), "error");
+    } finally {
+      setIsImportingQuestions(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const handleExportAttemptsCSV = () => {
+    if (filteredQuizAttempts.length === 0) {
+      triggerMessage("Tidak ada data hasil kuis untuk diekspor.", "error");
+      return;
+    }
+    const headers = ["No", "Nama Siswa", "Kelas", "Kuis", "Tipe Kuis", "Skor Akhir", "Tanggal Selesai"];
+    const rows = filteredQuizAttempts.map((a, idx) => [
+      idx + 1,
+      `"${(a.studentName || "").replace(/"/g, '""')}"`,
+      `"${(a.className || "").replace(/"/g, '""')}"`,
+      `"${(a.quizTitle || "").replace(/"/g, '""')}"`,
+      `"${(a.quizType || "").toUpperCase()}"`,
+      a.score,
+      `"${(a.completedAt || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `Rekapitulasi_Hasil_Kuis_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    triggerMessage("Berhasil mengekspor data hasil kuis ke CSV/Excel!", "success");
+  };
+
+  const handlePrintAttempts = () => {
+    if (filteredQuizAttempts.length === 0) {
+      triggerMessage("Tidak ada data hasil kuis untuk dicetak.", "error");
+      return;
+    }
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Rekapitulasi Nilai & Hasil Kuis Siswa</title>
+          <style>
+            @page {
+              size: A4 landscape;
+              margin: 0;
+            }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 15mm 20mm !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+              margin: 0;
+              padding: 15mm 20mm;
+              color: #1e293b;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #334155;
+              padding-bottom: 15px;
+              margin-bottom: 20px;
+            }
+            .title {
+              font-size: 18px;
+              font-weight: bold;
+              text-transform: uppercase;
+              margin: 0;
+              color: #0f172a;
+            }
+            .subtitle {
+              font-size: 12px;
+              color: #64748b;
+              margin-top: 5px;
+            }
+            .meta {
+              font-size: 12px;
+              margin-bottom: 15px;
+              display: flex;
+              justify-content: space-between;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+            th, td {
+              border: 1px solid #cbd5e1;
+              padding: 8px 10px;
+              text-align: left;
+            }
+            th {
+              background-color: #f1f5f9;
+              font-weight: bold;
+            }
+            .text-center {
+              text-align: center !important;
+            }
+            .score-pass {
+              color: #047857;
+              font-weight: bold;
+            }
+            .score-fail {
+              color: #b91c1c;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">DIGIMIND - LAPORAN REKAPITULASI HASIL KUIS SISWA</div>
+            <div class="subtitle">Sistem Monitoring Literasi & Evaluasi Akademik Adaptif</div>
+          </div>
+          <div class="meta">
+            <div><strong>Total Data:</strong> ${filteredQuizAttempts.length} Siswa / Pengerjaan</div>
+            <div><strong>Tanggal Cetak:</strong> ${new Date().toLocaleDateString("id-ID", { dateStyle: "long" })}</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th class="text-center" style="width: 40px;">No</th>
+                <th>Nama Siswa</th>
+                <th>Kelas</th>
+                <th>Kuis / Evaluasi</th>
+                <th class="text-center">Tipe</th>
+                <th class="text-center">Nilai</th>
+                <th>Tanggal Selesai</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredQuizAttempts
+                .map(
+                  (a, i) => `
+                <tr>
+                  <td class="text-center">${i + 1}</td>
+                  <td><strong>${a.studentName || "-"}</strong></td>
+                  <td>${a.className || "-"}</td>
+                  <td>${a.quizTitle || "-"}</td>
+                  <td class="text-center">${(a.quizType || "").toUpperCase()}</td>
+                  <td class="text-center ${a.score >= 70 ? "score-pass" : "score-fail"}">${a.score}</td>
+                  <td>${a.completedAt || "-"}</td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    let printIframe = document.getElementById("admin-print-frame") as HTMLIFrameElement | null;
+    if (!printIframe) {
+      printIframe = document.createElement("iframe");
+      printIframe.id = "admin-print-frame";
+      printIframe.style.position = "fixed";
+      printIframe.style.right = "0";
+      printIframe.style.bottom = "0";
+      printIframe.style.width = "0";
+      printIframe.style.height = "0";
+      printIframe.style.border = "0";
+      document.body.appendChild(printIframe);
+    }
+
+    const priDoc = printIframe.contentWindow?.document || printIframe.contentDocument;
+    if (priDoc) {
+      priDoc.open();
+      priDoc.write(html);
+      priDoc.close();
+      setTimeout(() => {
+        printIframe?.contentWindow?.focus();
+        printIframe?.contentWindow?.print();
+      }, 350);
     }
   };
 
@@ -1165,180 +1452,114 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#2e384d] font-sans relative w-full max-w-full overflow-x-hidden">
+    <div className="relative min-h-screen bg-white text-zinc-900 w-full font-sans">
       
-      {/* Decorative Orbs */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute top-0 left-1/4 h-[350px] w-[350px] rounded-full bg-[#5A77DF]/5 blur-[100px]" />
-        <div className="absolute bottom-0 right-1/4 h-[350px] w-[350px] rounded-full bg-[#3E53A2]/5 blur-[100px]" />
+      {/* Background accents */}
+      <div className="pointer-events-none fixed inset-0 flex justify-center overflow-hidden">
+        <div className="h-[500px] w-[500px] rounded-full bg-[#5A77DF]/5 blur-[140px]" />
+        <div className="absolute top-1/3 right-10 h-[350px] w-[350px] rounded-full bg-purple-900/10 blur-[140px]" />
+        <div className="absolute bottom-0 right-1/4 h-[420px] w-[420px] rounded-full bg-blue-900/10 blur-[120px]" />
       </div>
 
-      {/* Main Container */}
-      <div className="relative mx-auto flex max-w-[1600px] flex-col gap-6 px-4 sm:px-6 lg:px-8 py-5 z-10">
-        
-        {/* Floating Message */}
-        {message && (
-          <div
-            className={`fixed top-6 right-6 z-50 p-4 rounded-xl text-xs font-bold shadow-xl animate-fadeIn flex items-center gap-2 ${
-              message.type === "success"
-                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                : "bg-red-50 text-red-600 border border-red-200"
-            }`}
-          >
-            {message.type === "success" ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
-            <span>{message.text}</span>
+      {/* Floating Toast Message */}
+      {message && (
+        <div
+          className={`fixed top-6 right-6 z-[9999] p-4 rounded-xl text-xs font-bold shadow-xl animate-fadeIn flex items-center gap-2 ${
+            message.type === "success"
+              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+              : "bg-red-50 text-red-600 border border-red-200"
+          }`}
+        >
+          {message.type === "success" ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-rose-600" />}
+          <span>{message.text}</span>
+        </div>
+      )}
+
+      {/* STICKY TOP NAVBAR */}
+      <header className="sticky top-0 z-50 w-full border-b border-zinc-200/80 bg-white/95 backdrop-blur-md shadow-2xs">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 transition cursor-pointer"
+              title="Buka Menu Navigasi"
+            >
+              <Menu className="w-5 h-5 text-zinc-700" />
+            </button>
+            <img src="/logo.png" alt="DigiMind" className="h-9 sm:h-12 w-auto max-w-[130px] sm:max-w-none object-contain" />
+            {/* <div className="hidden sm:block">
+              <p className="text-3xs font-extrabold uppercase tracking-[0.2em] sm:tracking-[0.35em] text-[#5A77DF]">
+                Portal Admin
+              </p>
+              <h1 className="text-xs sm:text-sm font-black text-[#2e384d] tracking-tight">
+                Panel Manajemen & Kontrol Utama
+              </h1>
+            </div> */}
           </div>
-        )}
-
-        {/* HEADER PANEL */}
-        <header className="sticky top-0 z-50 rounded-2xl border border-zinc-200/80 bg-white/90 backdrop-blur-md p-3.5 sm:p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="lg:hidden p-2 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 transition cursor-pointer"
-                title="Buka Menu Navigasi"
-              >
-                <Menu className="w-5 h-5 text-zinc-700" />
-              </button>
-              <img src="/logo.png" alt="DigiMind" className="h-10 sm:h-14 lg:h-16 w-auto object-contain" />
-              <div>
-                <p className="text-3xs font-extrabold uppercase tracking-[0.2em] sm:tracking-[0.35em] text-[#5A77DF]">
-                  Portal Admin
-                </p>
-                <h1 className="text-xs sm:text-base lg:text-lg font-black text-[#2e384d] tracking-tight">
-                  Panel Manajemen & Kontrol Utama
-                </h1>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-              {/* Profile Card matching reference image - Clickable to open Change Password Modal */}
-              <button
-                type="button"
-                onClick={() => setShowAdminPassModal(true)}
-                className="flex items-center gap-2 text-left hover:opacity-90 transition cursor-pointer group"
-                title="Klik untuk Ganti Password Admin"
-              >
-                <div className="relative h-9 w-9 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
-                  <div className="h-full w-full rounded-full bg-gradient-to-br from-[#5A77DF] to-[#3E53A2] text-white font-extrabold flex items-center justify-center text-xs sm:text-sm shadow-inner">
-                    A
-                  </div>
-                </div>
-                <div className="hidden md:block">
-                  <h4 className="text-xs sm:text-sm font-extrabold text-zinc-900 leading-tight group-hover:text-[#5A77DF] transition-colors">
-                    Admin DigiMind
-                  </h4>
-                  <p className="text-3xs sm:text-xs font-semibold text-zinc-400 leading-tight">
-                    Administrator (Ganti Password)
-                  </p>
-                </div>
-              </button>
-
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={loadData}
-                  className="relative p-2 sm:p-2.5 rounded-full text-zinc-900 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center"
-                  title="Refresh Data & Notifikasi"
-                >
-                  <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-900 fill-zinc-900" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-500 border-2 border-white shadow-xs" />
-                </button>
-              </div>
-
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-xl bg-red-50 hover:bg-red-100/80 text-red-600 border border-red-200/45 px-2.5 sm:px-3.5 py-2 text-3xs sm:text-2xs font-bold transition cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Keluar</span>
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* MOBILE DRAWER OVERLAY */}
-        {isMobileMenuOpen && (
-          <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm lg:hidden animate-fadeIn">
-            <div className="w-4/5 max-w-xs h-full bg-[#5A77DF] p-5 text-white flex flex-col justify-between shadow-2xl overflow-y-auto">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-white/20 pb-3">
-                  <div className="flex items-center gap-2">
-                    <img src="/logo.png" alt="DigiMind" className="h-8 w-auto bg-white rounded-lg p-1" />
-                    <span className="text-xs font-black uppercase tracking-wider">Navigasi Admin</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="text-white/80 hover:text-white text-lg font-bold p-1 cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <nav className="space-y-1">
-                  {[
-                    { id: "overview", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
-                    { id: "users", label: "Manajemen Akun", icon: <Users className="w-4 h-4" /> },
-                    { id: "teachers", label: "Pengampuan Guru", icon: <GraduationCap className="w-4 h-4" /> },
-                    { id: "actors", label: "Aktor Admin & Izin", icon: <ShieldCheck className="w-4 h-4" /> },
-                    { id: "classes", label: "Data Kelas", icon: <School className="w-4 h-4" /> },
-                    { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
-                    { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
-                    { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
-                    { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
-                    { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
-                    { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
-                  ].map((item) => {
-                    const isActive = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setActiveTab(item.id as DashboardTab);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
-                          isActive
-                            ? "border-white bg-white text-[#3E53A2] shadow-md"
-                            : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
-                        }`}
-                      >
-                        <span className="shrink-0">{item.icon}</span>
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-
-              <div className="pt-4 border-t border-white/20">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    handleLogout();
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/20 hover:bg-white/30 py-2.5 text-xs font-bold text-white transition cursor-pointer"
-                >
-                  <LogOut className="w-4 h-4" /> Keluar
-                </button>
-              </div>
-            </div>
-            <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />
-          </div>
-        )}
-
-        {/* MAIN LAYOUT */}
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
           
-          {/* DESKTOP SIDEBAR NAVIGATION (Visible on lg screens) */}
-          <aside className="hidden lg:block w-64 shrink-0 lg:sticky lg:top-28 self-start z-30">
-            <div className="rounded-2xl border border-[#5A77DF] bg-[#5A77DF] p-4 shadow-lg text-white space-y-4">
-              <div className="px-3 py-2 border-b border-white/20">
-                <p className="text-3xs uppercase tracking-widest text-white/70 font-extrabold font-mono">Navigasi Utama</p>
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+            {/* Admin Profile Card - Clickable to open Change Password Modal */}
+            <button
+              type="button"
+              onClick={() => setShowAdminPassModal(true)}
+              className="flex items-center gap-2.5 text-left hover:opacity-90 transition cursor-pointer group"
+              title="Klik untuk Ganti Password Admin"
+            >
+              <div className="relative h-9 w-9 sm:h-11 sm:w-11 rounded-full p-[2px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-sm shrink-0 group-hover:scale-105 transition-transform duration-200">
+                <div className="h-full w-full rounded-full bg-gradient-to-br from-[#5A77DF] to-[#3E53A2] text-white font-extrabold flex items-center justify-center text-xs sm:text-sm shadow-inner">
+                  A
+                </div>
+              </div>
+              <div className="hidden md:block">
+                <h4 className="text-xs sm:text-sm font-extrabold text-zinc-900 leading-tight group-hover:text-[#5A77DF] transition-colors">
+                  Admin DigiMind
+                </h4>
+                <p className="text-3xs sm:text-xs font-semibold text-zinc-400 leading-tight">
+                  Administrator
+                </p>
+              </div>
+            </button>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={loadData}
+                className="relative p-2 sm:p-2.5 rounded-full text-zinc-900 hover:bg-zinc-100 transition cursor-pointer flex items-center justify-center"
+                title="Refresh Data & Notifikasi"
+              >
+                <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-zinc-900 fill-zinc-900" />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-rose-500 border-2 border-white shadow-xs" />
+              </button>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 rounded-xl bg-red-50 hover:bg-red-100/80 text-red-600 border border-red-200/45 px-2.5 sm:px-3.5 py-2 text-3xs sm:text-2xs font-bold transition cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Keluar</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* MOBILE DRAWER OVERLAY */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-xs lg:hidden animate-fadeIn">
+          <div className="w-4/5 max-w-xs h-full bg-[#5A77DF] p-5 text-white flex flex-col justify-between shadow-2xl overflow-y-auto">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-white/20 pb-3">
+                <div className="flex items-center gap-2">
+                  <img src="/logo.png" alt="DigiMind" className="h-8 w-auto bg-white rounded-lg p-1" />
+                  <span className="text-xs font-black uppercase tracking-wider">Navigasi Admin</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="text-white/80 hover:text-white text-lg font-bold p-1 cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
 
               <nav className="space-y-1">
@@ -1360,7 +1581,10 @@ export default function AdminDashboardPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveTab(item.id as DashboardTab)}
+                      onClick={() => {
+                        setActiveTab(item.id as DashboardTab);
+                        setIsMobileMenuOpen(false);
+                      }}
                       className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
                         isActive
                           ? "border-white bg-white text-[#3E53A2] shadow-md"
@@ -1374,47 +1598,108 @@ export default function AdminDashboardPage() {
                 })}
               </nav>
             </div>
-          </aside>
 
-          {/* MOBILE TAB PILLS NAVIGATION (Scrollable horizontal bar for mobile screens) */}
-          <div className="lg:hidden w-full overflow-x-auto custom-scrollbar bg-[#5A77DF] p-2 rounded-2xl shadow-md flex items-center gap-1.5 shrink-0 z-30">
-            {[
-              { id: "overview", label: "Ringkasan", icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
-              { id: "users", label: "Akun", icon: <Users className="w-3.5 h-3.5" /> },
-              { id: "teachers", label: "Guru", icon: <GraduationCap className="w-3.5 h-3.5" /> },
-              { id: "actors", label: "Aktor Admin", icon: <ShieldCheck className="w-3.5 h-3.5" /> },
-              { id: "classes", label: "Kelas", icon: <School className="w-3.5 h-3.5" /> },
-              { id: "subjects", label: "Mapel", icon: <BookOpen className="w-3.5 h-3.5" /> },
-              { id: "modules", label: "Modul", icon: <FileCode className="w-3.5 h-3.5" /> },
-              { id: "quizzes", label: "Kuis", icon: <HelpCircle className="w-3.5 h-3.5" /> },
-              { id: "pretest_screening", label: "Pretest Mental", icon: <Brain className="w-3.5 h-3.5" /> },
-              { id: "attempts", label: "Hasil Kuis", icon: <Target className="w-3.5 h-3.5" /> },
-              { id: "screening", label: "Hasil SRQ-29", icon: <FileText className="w-3.5 h-3.5" /> },
-            ].map((item) => {
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTab(item.id as DashboardTab);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-2xs font-extrabold whitespace-nowrap transition cursor-pointer shrink-0 ${
-                    isActive
-                      ? "bg-white text-[#3E53A2] shadow-sm"
-                      : "text-white/85 hover:bg-white/15 hover:text-white"
-                  }`}
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
+            <div className="pt-4 border-t border-white/20">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  handleLogout();
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/20 hover:bg-white/30 py-2.5 text-xs font-bold text-white transition cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" /> Keluar
+              </button>
+            </div>
           </div>
+          <div className="flex-1" onClick={() => setIsMobileMenuOpen(false)} />
+        </div>
+      )}
 
-          {/* MAIN DYNAMIC CONTENT */}
-          <main className="flex-1 min-w-0 w-full space-y-6">
+      {/* MAIN CONTAINER matching Teacher & Student dashboards */}
+      <main className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col lg:flex-row gap-6 items-start pb-24 lg:pb-8">
+        
+        {/* DESKTOP SIDEBAR NAVIGATION (Visible on lg screens) */}
+        <aside className="hidden lg:block w-64 xl:w-72 shrink-0 lg:sticky lg:top-20 self-start z-30">
+          <div className="rounded-2xl border border-[#5A77DF] bg-[#5A77DF] p-4 shadow-lg text-white space-y-4">
+            <div className="px-3 py-2 border-b border-white/20">
+              <p className="text-3xs uppercase tracking-widest text-white/70 font-extrabold font-mono">Navigasi Admin</p>
+            </div>
+
+            <nav className="space-y-1">
+              {[
+                { id: "overview", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
+                { id: "users", label: "Manajemen Akun", icon: <Users className="w-4 h-4" /> },
+                { id: "teachers", label: "Pengampuan Guru", icon: <GraduationCap className="w-4 h-4" /> },
+                { id: "actors", label: "Aktor Admin & Izin", icon: <ShieldCheck className="w-4 h-4" /> },
+                { id: "classes", label: "Data Kelas", icon: <School className="w-4 h-4" /> },
+                { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
+                { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
+                { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
+                { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
+                { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
+                { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
+              ].map((item) => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveTab(item.id as DashboardTab)}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition cursor-pointer ${
+                      isActive
+                        ? "border-white bg-white text-[#3E53A2] shadow-md"
+                        : "border-transparent text-white/85 hover:bg-white/15 hover:text-white"
+                    }`}
+                  >
+                    <span className="shrink-0">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* MOBILE BOTTOM NAVIGATION BAR (Fixed at bottom for mobile screens) */}
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-zinc-200/90 shadow-2xl px-2 py-2 flex items-center overflow-x-auto gap-2">
+          {[
+            { id: "overview", label: "Ringkasan", icon: <LayoutDashboard className="w-4 h-4" /> },
+            { id: "users", label: "Akun", icon: <Users className="w-4 h-4" /> },
+            { id: "teachers", label: "Guru", icon: <GraduationCap className="w-4 h-4" /> },
+            { id: "actors", label: "Aktor Admin", icon: <ShieldCheck className="w-4 h-4" /> },
+            { id: "classes", label: "Kelas", icon: <School className="w-4 h-4" /> },
+            { id: "subjects", label: "Mapel", icon: <BookOpen className="w-4 h-4" /> },
+            { id: "modules", label: "Modul", icon: <FileCode className="w-4 h-4" /> },
+            { id: "quizzes", label: "Kuis", icon: <HelpCircle className="w-4 h-4" /> },
+            { id: "pretest_screening", label: "Pretest SRQ", icon: <Brain className="w-4 h-4" /> },
+            { id: "attempts", label: "Hasil Kuis", icon: <Target className="w-4 h-4" /> },
+            { id: "screening", label: "Hasil SRQ-29", icon: <FileText className="w-4 h-4" /> },
+          ].map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setActiveTab(item.id as DashboardTab);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                  isActive
+                    ? "bg-[#5A77DF] text-white shadow-sm"
+                    : "text-zinc-600 hover:bg-zinc-100"
+                }`}
+              >
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* DYNAMIC CONTENT AREA */}
+        <div className="flex-1 min-w-0 w-full space-y-6">
 
             {loading ? (
               <div className="flex h-64 items-center justify-center rounded-2xl bg-white border border-zinc-200/80 shadow-sm">
@@ -2197,9 +2482,29 @@ export default function AdminDashboardPage() {
                 {/* 7. ATTEMPTS VIEW */}
                 {activeTab === "attempts" && (
                   <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="border-b border-zinc-100 pb-3">
-                      <h3 className="text-sm font-extrabold text-zinc-800">Riwayat Jawaban & Hasil Kuis</h3>
-                      <p className="text-3xs text-zinc-400">Pantau jawaban detail yang disubmit oleh masing-masing siswa.</p>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-3">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-zinc-800">Riwayat Jawaban & Hasil Kuis</h3>
+                        <p className="text-3xs text-zinc-400">Pantau jawaban detail yang disubmit oleh masing-masing siswa.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleExportAttemptsCSV}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-3.5 py-2 text-2xs font-extrabold text-emerald-800 transition cursor-pointer shadow-2xs"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Export Excel/CSV</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePrintAttempts}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-3.5 py-2 text-2xs font-extrabold text-zinc-700 transition cursor-pointer shadow-2xs"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-zinc-600" />
+                          <span>Cetak Nilai</span>
+                        </button>
+                      </div>
                     </div>
 
                     {renderSearchFilterBar()}
@@ -2312,9 +2617,8 @@ export default function AdminDashboardPage() {
                 )}
               </>
             )}
-          </main>
-        </div>
-      </div>
+          </div>
+        </main>
 
       {/* ========================================================
       MODAL POPUPS FOR CRUD ACTIONS
@@ -2566,9 +2870,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 {selectedUser ? "Simpan Perubahan" : "Daftarkan Akun"}
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{selectedUser ? "Simpan Perubahan" : "Daftarkan Akun"}</span>
                 </button>
                 <button
                   type="button"
@@ -2633,9 +2938,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 Simpan Kelas
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Kelas</span>
                 </button>
                 <button
                   type="button"
@@ -2705,9 +3011,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 Simpan Mata Pelajaran
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Mata Pelajaran</span>
                 </button>
                 <button
                   type="button"
@@ -2816,9 +3123,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 Simpan Modul
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Modul</span>
                 </button>
                 <button
                   type="button"
@@ -2888,9 +3196,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 Simpan Kuis
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Kuis</span>
                 </button>
                 <button
                   type="button"
@@ -2978,15 +3287,34 @@ export default function AdminDashboardPage() {
               )}
             </div>
 
-            <div className="mt-6 pt-4 border-t border-zinc-150 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={handleOpenQuestionCreate}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2.5 text-2xs font-extrabold text-white transition cursor-pointer shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Pertanyaan Baru</span>
-              </button>
+            <div className="mt-6 pt-4 border-t border-zinc-150 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenQuestionCreate}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2.5 text-2xs font-extrabold text-white transition cursor-pointer shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Pertanyaan Baru</span>
+                </button>
+
+                <input
+                  type="file"
+                  accept=".docx,.pdf,.txt"
+                  ref={questionsFileInputRef}
+                  onChange={handleImportQuestionsAdmin}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isImportingQuestions}
+                  onClick={() => questionsFileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 text-2xs font-extrabold text-emerald-800 transition cursor-pointer shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{isImportingQuestions ? "Mengimpor Soal..." : "Import Soal (Word / PDF)"}</span>
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -3065,9 +3393,10 @@ export default function AdminDashboardPage() {
               <div className="flex gap-2 pt-2 border-t border-zinc-150">
                 <button
                   type="submit"
-                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition"
+                  className="flex-1 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] py-3 text-xs font-bold text-white cursor-pointer transition flex items-center justify-center gap-1.5"
                 >
-                  💾 Simpan Soal
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Soal</span>
                 </button>
                 <button
                   type="button"
@@ -3340,9 +3669,10 @@ export default function AdminDashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2 text-xs font-extrabold text-white transition-all cursor-pointer shadow-sm"
+                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2 text-xs font-extrabold text-white transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                 >
-                  💾 Simpan Pengampuan Guru
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Pengampuan Guru</span>
                 </button>
               </div>
             </form>
@@ -3532,9 +3862,10 @@ export default function AdminDashboardPage() {
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2 text-xs font-extrabold text-white transition-all cursor-pointer shadow-sm"
+                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2 text-xs font-extrabold text-white transition-all cursor-pointer shadow-sm flex items-center gap-1.5"
                 >
-                  💾 Simpan Aktor & Hak Akses
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Simpan Aktor & Hak Akses</span>
                 </button>
               </div>
             </form>
@@ -3650,6 +3981,43 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 border border-zinc-200">
+            <div className="flex items-center gap-3 border-b border-zinc-100 pb-3">
+              <div className="p-2.5 rounded-full shrink-0 bg-rose-100 text-rose-600">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-zinc-900">{confirmModal.title}</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-600 leading-relaxed font-medium">
+              {confirmModal.message}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+                className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-600 transition cursor-pointer"
+              >
+                {confirmModal.cancelText || "Batal"}
+              </button>
+              <button
+                type="button"
+                onClick={confirmModal.onConfirm}
+                className="rounded-xl bg-rose-600 hover:bg-rose-700 px-4 py-2 text-xs font-extrabold text-white transition cursor-pointer shadow-sm"
+              >
+                {confirmModal.confirmText || "Ya, Hapus"}
+              </button>
+            </div>
           </div>
         </div>
       )}

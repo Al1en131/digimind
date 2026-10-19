@@ -82,20 +82,28 @@ export async function GET(request: Request) {
         activeTeacherId
       });
 
-    } else if (decoded.role === "teacher") {
+    } else if (decoded.role === "teacher" || decoded.role === "admin") {
       // Find the teacher profile
-      const teacher = await prisma.guru.findUnique({
+      let teacher = await prisma.guru.findUnique({
         where: { user_id: decoded.userId }
       });
 
-      if (!teacher) {
-        return NextResponse.json(
-          { success: false, message: "Profil guru tidak ditemukan." },
-          { status: 404 }
-        );
+      if (!teacher && decoded.role === "teacher") {
+        teacher = await prisma.guru.findFirst({
+          where: { OR: [{ user_id: decoded.userId }, { id: decoded.userId }] }
+        });
       }
 
-      if (teacher.type !== "bk") {
+      const isBk = decoded.role === "admin" || (teacher && (
+        (teacher.type || "").toLowerCase().includes("bk") ||
+        (teacher.type || "").toLowerCase().includes("bimbingan") ||
+        (teacher.position || "").toLowerCase().includes("bk") ||
+        (teacher.position || "").toLowerCase().includes("bimbingan") ||
+        (teacher.specialization || "").toLowerCase().includes("bk") ||
+        (teacher.specialization || "").toLowerCase().includes("bimbingan")
+      ));
+
+      if (!isBk && decoded.role !== "admin") {
         return NextResponse.json(
           { success: false, message: "Hanya Guru BK yang dapat mengakses intervensi chat." },
           { status: 403 }
@@ -116,7 +124,7 @@ export async function GET(request: Request) {
       const messages = await prisma.chatMessage.findMany({
         where: {
           student_id: studentId,
-          teacher_id: teacher.id
+          ...(teacher ? { teacher_id: teacher.id } : {})
         },
         orderBy: { created_at: "asc" }
       });
@@ -185,7 +193,13 @@ export async function POST(request: Request) {
       const targetTeacherId = teacherId ? parseInt(teacherId) : null;
       if (!targetTeacherId) {
         // If not specified, try to find the first BK teacher in system
-        const firstBk = await prisma.guru.findFirst({ where: { type: "bk" } });
+        const allTeachers = await prisma.guru.findMany();
+        const firstBk = allTeachers.find((t) =>
+          (t.type || "").toLowerCase().includes("bk") ||
+          (t.position || "").toLowerCase().includes("bk") ||
+          (t.specialization || "").toLowerCase().includes("bk")
+        ) || allTeachers[0];
+
         if (!firstBk) {
           return NextResponse.json(
             { success: false, message: "Tidak ada guru BK terdaftar di sistem." },
@@ -228,19 +242,27 @@ export async function POST(request: Request) {
         }
       });
 
-    } else if (decoded.role === "teacher") {
-      const teacher = await prisma.guru.findUnique({
+    } else if (decoded.role === "teacher" || decoded.role === "admin") {
+      let teacher = await prisma.guru.findUnique({
         where: { user_id: decoded.userId }
       });
 
-      if (!teacher) {
-        return NextResponse.json(
-          { success: false, message: "Profil guru tidak ditemukan." },
-          { status: 404 }
-        );
+      if (!teacher && decoded.role === "teacher") {
+        teacher = await prisma.guru.findFirst({
+          where: { OR: [{ user_id: decoded.userId }, { id: decoded.userId }] }
+        });
       }
 
-      if (teacher.type !== "bk") {
+      const isBk = decoded.role === "admin" || (teacher && (
+        (teacher.type || "").toLowerCase().includes("bk") ||
+        (teacher.type || "").toLowerCase().includes("bimbingan") ||
+        (teacher.position || "").toLowerCase().includes("bk") ||
+        (teacher.position || "").toLowerCase().includes("bimbingan") ||
+        (teacher.specialization || "").toLowerCase().includes("bk") ||
+        (teacher.specialization || "").toLowerCase().includes("bimbingan")
+      ));
+
+      if (!isBk && decoded.role !== "admin") {
         return NextResponse.json(
           { success: false, message: "Hanya Guru BK yang dapat melakukan intervensi chat." },
           { status: 403 }
@@ -254,36 +276,17 @@ export async function POST(request: Request) {
         );
       }
 
+      const sId = parseInt(studentId);
+      const activeTeacherId = teacher ? teacher.id : (await prisma.guru.findFirst({}))?.id || 1;
+
       const newMessage = await prisma.chatMessage.create({
         data: {
-          student_id: parseInt(studentId),
-          teacher_id: teacher.id,
+          student_id: sId,
+          teacher_id: activeTeacherId,
           message: encryptedMessagePayload,
           sender: "teacher"
         }
       });
-
-      // Also create/update a MentalIntervention record to keep historical logs if desired
-      const existingIntervention = await prisma.mentalIntervention.findFirst({
-        where: {
-          student_id: parseInt(studentId),
-          assigned_by: decoded.userId,
-          status: "active"
-        }
-      });
-
-      if (!existingIntervention) {
-        await prisma.mentalIntervention.create({
-          data: {
-            student_id: parseInt(studentId),
-            name: encryptSensitiveText("Intervensi Bimbingan Chat") || "Intervensi Bimbingan Chat",
-            description: encryptSensitiveText(`Intervensi chat aktif dimulai oleh Guru BK: ${teacher.name}`) || `Intervensi chat aktif dimulai oleh Guru BK: ${teacher.name}`,
-            status: "active",
-            assigned_by: decoded.userId,
-            started_at: new Date()
-          }
-        });
-      }
 
       return NextResponse.json({
         success: true,
@@ -314,18 +317,33 @@ export async function PUT(request: Request) {
     const sessionToken = cookieStore.get("session_token")?.value;
     const decoded = sessionToken ? verifyJWT(sessionToken) : null;
 
-    if (!decoded || decoded.role !== "teacher") {
+    if (!decoded || (decoded.role !== "teacher" && decoded.role !== "admin")) {
       return NextResponse.json(
-        { success: false, message: "Akses ditolak. Hanya Guru BK yang dapat memperbarui status pendampingan." },
+        { success: false, message: "Akses ditolak. Silakan login sebagai Guru BK." },
         { status: 403 }
       );
     }
 
-    const teacher = await prisma.guru.findUnique({
+    let teacher = await prisma.guru.findUnique({
       where: { user_id: decoded.userId }
     });
 
-    if (!teacher || teacher.type !== "bk") {
+    if (!teacher && decoded.role === "teacher") {
+      teacher = await prisma.guru.findFirst({
+        where: { OR: [{ user_id: decoded.userId }, { id: decoded.userId }] }
+      });
+    }
+
+    const isBk = decoded.role === "admin" || (teacher && (
+      (teacher.type || "").toLowerCase().includes("bk") ||
+      (teacher.type || "").toLowerCase().includes("bimbingan") ||
+      (teacher.position || "").toLowerCase().includes("bk") ||
+      (teacher.position || "").toLowerCase().includes("bimbingan") ||
+      (teacher.specialization || "").toLowerCase().includes("bk") ||
+      (teacher.specialization || "").toLowerCase().includes("bimbingan")
+    ));
+
+    if (!isBk && decoded.role !== "admin") {
       return NextResponse.json(
         { success: false, message: "Hanya Guru BK yang dapat menandai pendampingan selesai." },
         { status: 403 }
@@ -357,6 +375,9 @@ export async function PUT(request: Request) {
       where: { student_id: sId, status: "active" }
     });
 
+    const teacherName = teacher ? teacher.name : "Guru BK / Admin";
+    const tId = teacher ? teacher.id : (await prisma.guru.findFirst({}))?.id || 1;
+
     if (activeInterventions.length > 0) {
       await prisma.mentalIntervention.updateMany({
         where: { student_id: sId, status: "active" },
@@ -370,7 +391,7 @@ export async function PUT(request: Request) {
         data: {
           student_id: sId,
           name: encryptSensitiveText("Pendampingan BK Selesai") || "Pendampingan BK Selesai",
-          description: encryptSensitiveText(`Pendampingan konseling diselesaikan oleh Guru BK: ${teacher.name}`) || `Pendampingan konseling diselesaikan oleh Guru BK: ${teacher.name}`,
+          description: encryptSensitiveText(`Pendampingan konseling diselesaikan oleh Guru BK: ${teacherName}`) || `Pendampingan konseling diselesaikan oleh Guru BK: ${teacherName}`,
           status: "completed",
           assigned_by: decoded.userId,
           started_at: new Date(),
@@ -380,13 +401,13 @@ export async function PUT(request: Request) {
     }
 
     // 3. Insert system chat message
-    const sysMsgText = `✅ Pendampingan BK Selesai: Guru BK (${teacher.name}) telah menandai bahwa sesi bimbingan & pendampingan untuk siswa ini telah selesai. Status risiko telah diperbarui menjadi 'Sudah Pendampingan'.`;
+    const sysMsgText = `✅ Pendampingan BK Selesai: Guru BK (${teacherName}) telah menandai bahwa sesi bimbingan & pendampingan untuk siswa ini telah selesai. Status risiko telah diperbarui menjadi 'Sudah Pendampingan'.`;
     const encryptedMsg = encryptSensitiveText(sysMsgText) || sysMsgText;
 
     await prisma.chatMessage.create({
       data: {
         student_id: sId,
-        teacher_id: teacher.id,
+        teacher_id: tId,
         message: encryptedMsg,
         sender: "teacher"
       }
