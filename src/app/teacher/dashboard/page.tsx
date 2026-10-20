@@ -44,6 +44,7 @@ import {
   Download,
   Printer,
   Calendar,
+  LogOut,
 } from "lucide-react";
 
 type QuizAnswerDetail = {
@@ -153,6 +154,8 @@ type TeacherDashboardData = {
   teacher: {
     id: number;
     name: string;
+    username?: string;
+    email?: string;
     nip: string;
     specialization: string;
     position: string;
@@ -472,83 +475,11 @@ export default function TeacherDashboardPage() {
     }
   };
 
-  // Change Password states
-  const [oldPassword, setOldPassword] = useState("");
+  // Change Password states for Edit Profile
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showChangePasswordSection, setShowChangePasswordSection] =
-    useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [changePasswordMsg, setChangePasswordMsg] = useState<{
-    text: string;
-    type: "success" | "error";
-  } | null>(null);
-  const [showOldPass, setShowOldPass] = useState(false);
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [showProfileNewPass, setShowProfileNewPass] = useState(false);
   const [showProfileConfirmPass, setShowProfileConfirmPass] = useState(false);
-
-  const handleChangePasswordTeacher = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!oldPassword || !newPassword) {
-      setChangePasswordMsg({
-        text: "Password lama dan password baru wajib diisi.",
-        type: "error",
-      });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setChangePasswordMsg({
-        text: "Konfirmasi password baru tidak cocok.",
-        type: "error",
-      });
-      return;
-    }
-    if (newPassword.length < 6) {
-      setChangePasswordMsg({
-        text: "Password baru minimal 6 karakter.",
-        type: "error",
-      });
-      return;
-    }
-
-    setChangingPassword(true);
-    setChangePasswordMsg(null);
-
-    try {
-      const res = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          oldPassword: oldPassword,
-          newPassword: newPassword,
-        }),
-      });
-      const json = await res.json();
-      if (res.ok && json.success) {
-        setChangePasswordMsg({
-          text: "Password Anda berhasil diperbarui!",
-          type: "success",
-        });
-        setOldPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        setChangePasswordMsg({
-          text: json.message || "Gagal mengubah password.",
-          type: "error",
-        });
-      }
-    } catch {
-      setChangePasswordMsg({
-        text: "Terjadi kesalahan koneksi server.",
-        type: "error",
-      });
-    } finally {
-      setChangingPassword(false);
-    }
-  };
 
   // Teacher profile edit states
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -1216,15 +1147,23 @@ export default function TeacherDashboardPage() {
     setEditPhone(data.teacher.phone_number || "");
     setNewPassword("");
     setConfirmPassword("");
+    setShowProfileNewPass(false);
+    setShowProfileConfirmPass(false);
     setProfileMessage(null);
     setIsEditingProfile(true);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
-      setProfileMessage("Gagal: Konfirmasi password baru tidak cocok.");
-      return;
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        setProfileMessage("Gagal: Password baru minimal 6 karakter.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setProfileMessage("Gagal: Konfirmasi password baru tidak cocok.");
+        return;
+      }
     }
     setSavingProfile(true);
     setProfileMessage(null);
@@ -1858,7 +1797,7 @@ export default function TeacherDashboardPage() {
         `"${s.teacherName.replace(/"/g, '""')}"`,
         s.grades.length,
         s.grades.length > 0 ? s.avgScore : "-",
-        s.grades.length === 0 ? "Belum Ada Nilai" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+        s.grades.length === 0 ? "Belum Ada Nilai" : s.avgScore >= 70 ? "Lulus" : "Tidak Lulus",
       ]);
       rows.push([
         "",
@@ -1869,7 +1808,7 @@ export default function TeacherDashboardPage() {
         "",
         `"${viewingStudentAttempts.length} total kuis"`,
         viewingOverallAvgScore,
-        viewingOverallAvgScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+        viewingOverallAvgScore >= 70 ? "Lulus" : "Tidak Lulus",
       ]);
     } else {
       if (filteredViewingStudentAttempts.length === 0) {
@@ -1979,7 +1918,7 @@ export default function TeacherDashboardPage() {
                 <td>${s.teacherName}</td>
                 <td class="text-center">${s.grades.length > 0 ? `${s.grades.length} Kuis (${s.pretestCount} Pretest, ${s.posttestCount} Posttest)` : "Belum ada evaluasi"}</td>
                 <td class="text-center ${s.grades.length > 0 ? (s.avgScore >= 70 ? "score-pass" : "score-fail") : ""}">${s.grades.length > 0 ? s.avgScore : "-"}</td>
-                <td class="text-center ${s.avgScore >= 70 && s.grades.length > 0 ? "score-pass" : ""}">${s.grades.length === 0 ? "Belum Diambil" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan"}</td>
+                <td class="text-center ${s.grades.length > 0 ? (s.avgScore >= 70 ? "score-pass" : "score-fail") : ""}">${s.grades.length === 0 ? "Belum Diambil" : s.avgScore >= 70 ? "Lulus" : "Tidak Lulus"}</td>
               </tr>
             `
               )
@@ -3297,14 +3236,17 @@ export default function TeacherDashboardPage() {
           <main className="flex-1 min-w-0 w-full space-y-6">
             {activeView === "profil" && (
               <section className="w-full animate-fadeIn">
-                <div className="rounded-3xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-6 text-zinc-900">
+                <div className="w-full rounded-2xl border border-[#5A77DF]/20 bg-white p-6 sm:p-8 shadow-sm space-y-6 text-zinc-900">
                   <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
-                    <h2 className="text-xl font-black text-zinc-900">Profil</h2>
+                    <div className="flex items-center gap-3">
+                      <User className="h-6 w-6 text-[#5A77DF]" />
+                      <h2 className="text-xl font-black text-zinc-900 tracking-tight">Profil</h2>
+                    </div>
                     {!isEditingProfile && (
                       <button
                         type="button"
                         onClick={handleOpenEditProfile}
-                        className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 px-4 py-2 text-2xs font-extrabold text-[#3E53A2] hover:bg-[#5A77DF]/20 transition cursor-pointer shadow-2xs"
+                        className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 px-4 py-2 text-xs font-extrabold text-[#3E53A2] hover:bg-[#5A77DF]/20 transition cursor-pointer"
                       >
                         Edit Profil
                       </button>
@@ -3315,8 +3257,8 @@ export default function TeacherDashboardPage() {
                     <div
                       className={`p-4 rounded-xl text-xs font-semibold ${
                         profileMessage.includes("berhasil")
-                          ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                          : "bg-rose-50 text-rose-800 border border-rose-200"
+                          ? "bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30"
+                          : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
                       }`}
                     >
                       {profileMessage}
@@ -3327,7 +3269,7 @@ export default function TeacherDashboardPage() {
                     /* Edit Profile Mode */
                     <form
                       onSubmit={handleSaveProfile}
-                      className="space-y-4 text-left"
+                      className="space-y-5 text-left"
                     >
                       <div className="space-y-2">
                         <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
@@ -3368,6 +3310,7 @@ export default function TeacherDashboardPage() {
                           />
                         </div>
                       </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="space-y-2">
                           <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
@@ -3394,304 +3337,178 @@ export default function TeacherDashboardPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                            Password Baru (Opsional)
-                          </label>
-                          <div className="relative">
-                            <input
-                              type={showProfileNewPass ? "text" : "password"}
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              placeholder="Password baru"
-                              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowProfileNewPass(!showProfileNewPass)
-                              }
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
-                            >
-                              {showProfileNewPass ? (
-                                <EyeOff className="w-4 h-4" />
-                              ) : (
-                                <Eye className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
+                      {/* Ubah Password (Opsional) */}
+                      <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-[#5A77DF]" />
+                          <span className="text-xs font-extrabold text-zinc-900">Ubah Password (Opsional)</span>
                         </div>
-                        <div className="space-y-2">
-                          <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                            Konfirmasi Password Baru
-                          </label>
-                          <div className="relative">
-                            <input
-                              type={
-                                showProfileConfirmPass ? "text" : "password"
-                              }
-                              value={confirmPassword}
-                              onChange={(e) =>
-                                setConfirmPassword(e.target.value)
-                              }
-                              placeholder="Ulangi password baru"
-                              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
-                            />
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowProfileConfirmPass(
-                                  !showProfileConfirmPass,
-                                )
-                              }
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
-                            >
-                              {showProfileConfirmPass ? (
-                                <EyeOff className="w-4 h-4" />
-                              ) : (
-                                <Eye className="w-4 h-4" />
-                              )}
-                            </button>
+                        <p className="text-3xs text-zinc-500">Kosongkan jika tidak ingin mengubah password saat ini.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                              Password Baru
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showProfileNewPass ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="Minimal 6 karakter"
+                                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowProfileNewPass(!showProfileNewPass)
+                                }
+                                className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold cursor-pointer"
+                              >
+                                {showProfileNewPass ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                              Konfirmasi Password Baru
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={
+                                  showProfileConfirmPass ? "text" : "password"
+                                }
+                                value={confirmPassword}
+                                onChange={(e) =>
+                                  setConfirmPassword(e.target.value)
+                                }
+                                placeholder="Ulangi password baru"
+                                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowProfileConfirmPass(
+                                    !showProfileConfirmPass,
+                                  )
+                                }
+                                className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold cursor-pointer"
+                              >
+                                {showProfileConfirmPass ? (
+                                  <EyeOff className="w-4 h-4" />
+                                ) : (
+                                  <Eye className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-2 pt-2">
                         <button
                           type="button"
                           onClick={() => setIsEditingProfile(false)}
-                          className="flex-1 py-3 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-600 text-xs font-bold transition cursor-pointer"
+                          className="flex-1 py-3 rounded-xl border border-zinc-200 bg-zinc-100 text-zinc-600 text-xs font-extrabold hover:bg-zinc-200 transition cursor-pointer"
                         >
                           Batal
                         </button>
                         <button
                           type="submit"
                           disabled={savingProfile}
-                          className="flex-1 py-3 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-sm transition cursor-pointer disabled:opacity-50"
+                          className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#5A77DF] to-[#3E53A2] text-white text-xs font-extrabold shadow-md hover:brightness-110 transition cursor-pointer disabled:opacity-50"
                         >
-                          {savingProfile ? "Menyimpan..." : "Simpan Perubahan"}
+                          {savingProfile ? "Menyimpan..." : "Simpan Profil"}
                         </button>
                       </div>
                     </form>
                   ) : (
                     /* View Profile Mode */
                     <div className="space-y-6">
-                      <div className="flex items-center gap-4 border-b border-zinc-100 pb-4">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#5A77DF]/10 border border-[#5A77DF]/30 shadow-xs text-[#3E53A2]">
-                          <User className="w-8 h-8 text-[#5A77DF]" />
+                      <div className="flex flex-col items-center justify-center p-6 bg-zinc-50 rounded-2xl border border-zinc-150">
+                        <div className="relative h-24 w-24 rounded-full p-[3px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-md mb-3">
+                          <div className="h-full w-full rounded-full overflow-hidden bg-white flex items-center justify-center select-none">
+                            <span className="text-[#5A77DF] font-black text-2xl">
+                              {data?.teacher?.name?.charAt(0).toUpperCase() || "G"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-left">
-                          <h2 className="text-xl font-black text-zinc-900">
+                        <div className="text-center">
+                          <h3 className="text-base font-black text-zinc-900">
                             {data?.teacher?.name}
-                          </h2>
-                          <p className="text-xs text-[#3E53A2] font-extrabold mt-0.5">
+                          </h3>
+                          <p className="text-2xs text-[#5A77DF] font-bold mt-0.5">
+                            {data?.teacher?.username ? `@${data?.teacher?.username}` : `@guru_${data?.teacher?.nip}`}
+                          </p>
+                          <p className="text-2xs text-zinc-500 font-mono mt-0.5 font-medium">
                             {data?.teacher?.type === "bk"
                               ? "Guru Bimbingan Konseling (BK)"
-                              : "Guru Mata Pelajaran"}
+                              : data?.teacher?.type === "wali_kelas"
+                              ? "Wali Kelas"
+                              : "Guru Mata Pelajaran"}{" "}
+                            • NIP: {data?.teacher?.nip}
                           </p>
                         </div>
                       </div>
 
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-left shadow-xs">
-                            <span className="block text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                              NIP / NUPTK
-                            </span>
-                            <span className="mt-1 block text-sm font-extrabold text-zinc-900">
-                              {data?.teacher?.nip}
-                            </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            NIP / NUPTK & Username
                           </div>
-                          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-left shadow-xs">
-                            <span className="block text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                              Keahlian / Spesialisasi
-                            </span>
-                            <span className="mt-1 block text-sm font-extrabold text-zinc-900">
-                              {data?.teacher?.specialization || "-"}
-                            </span>
-                          </div>
-                          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-left shadow-xs">
-                            <span className="block text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                              No. Telepon / HP
-                            </span>
-                            <span className="mt-1 block text-sm font-extrabold text-zinc-900">
-                              {data?.teacher?.phone_number || "-"}
-                            </span>
+                          <div className="font-extrabold text-zinc-900">
+                            NIP: {data?.teacher?.nip} {data?.teacher?.username ? `• @${data?.teacher?.username}` : ""}
                           </div>
                         </div>
-
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-left shadow-xs">
-                            <span className="block text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                              Jabatan
-                            </span>
-                            <span className="mt-1 block text-sm font-extrabold text-zinc-900">
-                              {data?.teacher?.position || "-"}
-                            </span>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Keahlian / Spesialisasi
                           </div>
-                          <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-left shadow-xs">
-                            <span className="block text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                              Status Akun
-                            </span>
-                            <span className="mt-1 inline-block text-xs font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
+                          <div className="font-extrabold text-zinc-900">
+                            {data?.teacher?.specialization || "-"}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Jabatan & Peran
+                          </div>
+                          <div className="font-extrabold text-zinc-900">
+                            {data?.teacher?.position || (data?.teacher?.type === "bk" ? "Guru Bimbingan Konseling" : data?.teacher?.type === "wali_kelas" ? "Wali Kelas" : "Guru Mata Pelajaran")}
+                            {data?.teacher?.assignedClass ? ` (${data?.teacher?.assignedClass?.displayName})` : ""}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            No. Telepon / HP
+                          </div>
+                          <div className="font-extrabold text-zinc-900">
+                            {data?.teacher?.phone_number || "-"}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 sm:col-span-2">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Status Akun
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="inline-block text-2xs font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
                               Aktif & Terverifikasi
                             </span>
+                            <span className="text-3xs text-zinc-400 font-mono">
+                              {data?.teacher?.email || ""}
+                            </span>
                           </div>
-                        </div>
-
-                        {/* Keamanan & Ganti Password Section */}
-                        <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 text-left space-y-4 shadow-xs">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Lock className="h-5 w-5 text-[#5A77DF]" />
-                              <h4 className="text-sm font-extrabold text-zinc-900">
-                                Keamanan & Ganti Password
-                              </h4>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setShowChangePasswordSection(
-                                  !showChangePasswordSection,
-                                )
-                              }
-                              className="text-xs font-extrabold text-[#5A77DF] hover:underline cursor-pointer"
-                            >
-                              {showChangePasswordSection
-                                ? "Tutup Form"
-                                : "Ubah Password"}
-                            </button>
-                          </div>
-
-                          {showChangePasswordSection && (
-                            <form
-                              onSubmit={handleChangePasswordTeacher}
-                              className="space-y-4 pt-2 border-t border-zinc-100"
-                            >
-                              {changePasswordMsg && (
-                                <div
-                                  className={`p-3.5 rounded-xl text-2xs font-bold ${changePasswordMsg.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-rose-50 text-rose-800 border border-rose-200"}`}
-                                >
-                                  {changePasswordMsg.text}
-                                </div>
-                              )}
-
-                              <div className="space-y-1.5">
-                                <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                                  Password Lama
-                                </label>
-                                <div className="relative">
-                                  <input
-                                    type={showOldPass ? "text" : "password"}
-                                    required
-                                    value={oldPassword}
-                                    onChange={(e) =>
-                                      setOldPassword(e.target.value)
-                                    }
-                                    placeholder="Masukkan password saat ini"
-                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowOldPass(!showOldPass)}
-                                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                  >
-                                    {showOldPass ? (
-                                      <EyeOff className="w-4 h-4" />
-                                    ) : (
-                                      <Eye className="w-4 h-4" />
-                                    )}
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                                    Password Baru
-                                  </label>
-                                  <div className="relative">
-                                    <input
-                                      type={showNewPass ? "text" : "password"}
-                                      required
-                                      value={newPassword}
-                                      onChange={(e) =>
-                                        setNewPassword(e.target.value)
-                                      }
-                                      placeholder="Minimal 6 karakter"
-                                      className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setShowNewPass(!showNewPass)
-                                      }
-                                      className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                    >
-                                      {showNewPass ? (
-                                        <EyeOff className="w-4 h-4" />
-                                      ) : (
-                                        <Eye className="w-4 h-4" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-1.5">
-                                  <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
-                                    Konfirmasi Password Baru
-                                  </label>
-                                  <div className="relative">
-                                    <input
-                                      type={
-                                        showConfirmPass ? "text" : "password"
-                                      }
-                                      required
-                                      value={confirmPassword}
-                                      onChange={(e) =>
-                                        setConfirmPassword(e.target.value)
-                                      }
-                                      placeholder="Ulangi password baru"
-                                      className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setShowConfirmPass(!showConfirmPass)
-                                      }
-                                      className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                    >
-                                      {showConfirmPass ? (
-                                        <EyeOff className="w-4 h-4" />
-                                      ) : (
-                                        <Eye className="w-4 h-4" />
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <button
-                                type="submit"
-                                disabled={changingPassword}
-                                className="w-full py-2.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-xs transition cursor-pointer disabled:opacity-50"
-                              >
-                                {changingPassword
-                                  ? "Memproses..."
-                                  : "Simpan Password Baru"}
-                              </button>
-                            </form>
-                          )}
                         </div>
                       </div>
 
-                      <div className="mt-8 border-t border-zinc-100 pt-6 flex justify-end">
+                      <div className="space-y-3 pt-2">
                         <button
                           onClick={handleLogout}
-                          className="rounded-xl bg-rose-600 hover:bg-rose-700 px-6 py-2.5 text-xs font-extrabold text-white transition shadow-xs cursor-pointer"
+                          className="w-full py-3.5 rounded-xl border border-rose-500/30 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2"
                         >
-                          Keluar
+                          <LogOut className="h-4 w-4" /> Keluar
                         </button>
                       </div>
                     </div>
@@ -3992,7 +3809,7 @@ export default function TeacherDashboardPage() {
                       </div>
 
                       {/* Unified Alert Risiko Card */}
-                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 md:p-6 shadow-sm flex flex-col justify-between">
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 md:p-6 shadow-sm flex flex-col justify-between overflow-hidden">
                         <div>
                           <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
                             <div>
@@ -4007,12 +3824,12 @@ export default function TeacherDashboardPage() {
                               {data.alerts.length} Aktif
                             </span>
                           </div>
-                          <div className="mt-4 space-y-3 max-h-[440px] overflow-y-auto pr-1">
+                          <div className="mt-4 space-y-3 max-h-[175px] overflow-y-auto overflow-x-hidden pr-1.5 custom-scrollbar overscroll-contain scroll-smooth snap-y snap-mandatory">
                             {data.alerts.length > 0 ? (
                               data.alerts.map((student) => (
                                 <div
                                   key={student.id}
-                                  className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 text-xs text-zinc-900 shadow-xs space-y-2.5 transition hover:border-[#5A77DF]"
+                                  className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 text-xs text-zinc-900 shadow-xs space-y-2.5 transition hover:border-[#5A77DF] snap-start"
                                 >
                                   {/* Header row */}
                                   <div className="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
@@ -4210,7 +4027,7 @@ export default function TeacherDashboardPage() {
 
                                 <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
                                   <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
-                                    Mapel Tuntas (≥ 70)
+                                    Mapel Lulus (≥ 70)
                                   </span>
                                   <p className="text-xl sm:text-2xl font-black text-purple-700 font-mono">
                                     {viewingStudentSubjectSummaries.filter((s) => s.grades.length > 0 && s.avgScore >= 70).length} <span className="text-xs font-normal text-zinc-400">Mapel</span>
@@ -4405,10 +4222,10 @@ export default function TeacherDashboardPage() {
                                                       className={`inline-block text-3xs font-extrabold px-2.5 py-0.5 rounded-md border ${
                                                         isPassed
                                                           ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                                          : "bg-amber-50 text-amber-800 border-amber-200"
+                                                          : "bg-rose-50 text-rose-800 border-rose-200"
                                                       }`}
                                                     >
-                                                      {isPassed ? "Tuntas" : "Perlu Bimbingan"}
+                                                      {isPassed ? "Lulus" : "Tidak Lulus"}
                                                     </span>
                                                   ) : (
                                                     <span className="text-3xs text-zinc-400 font-mono">Belum Diambil</span>
@@ -4439,9 +4256,9 @@ export default function TeacherDashboardPage() {
                                       {filteredViewingSubjectSummaries.length > 0 && (
                                         <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
                                           <tr className="divide-x divide-zinc-150">
+                                            <td colSpan={3} className="px-4 py-3.5" />
                                             <td
-                                              colSpan={4}
-                                              className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                              className="px-4 py-3.5 text-center font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
                                             >
                                               Rata-Rata Seluruh Mapel:
                                             </td>
@@ -4574,9 +4391,9 @@ export default function TeacherDashboardPage() {
                                       {filteredViewingStudentAttempts.length > 0 && (
                                         <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
                                           <tr className="divide-x divide-zinc-150">
+                                            <td colSpan={4} className="px-4 py-3.5" />
                                             <td
-                                              colSpan={5}
-                                              className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                              className="px-4 py-3.5 text-center font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
                                             >
                                               Rata-Rata Nilai Mapel:
                                             </td>

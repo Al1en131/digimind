@@ -59,6 +59,7 @@ export interface QuizAnswerDetail {
 export interface StudentGradeItem {
   id: number;
   quizId: number;
+  moduleId?: number | null;
   title: string;
   type: "Pretest" | "Posttest";
   classId: number;
@@ -86,6 +87,7 @@ interface Student {
   id: number;
   name: string;
   username: string;
+  email?: string;
   nis: string;
   class_id?: number;
   class_name?: string;
@@ -376,6 +378,8 @@ export default function StudentDashboard() {
   // Change Password states
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showProfileNewPass, setShowProfileNewPass] = useState(false);
+  const [showProfileConfirmPass, setShowProfileConfirmPass] = useState(false);
 
   // Chat BK states
   const [chatMessages, setChatMessages] = useState<any[]>([]);
@@ -396,60 +400,6 @@ export default function StudentDashboard() {
   const [editClassId, setEditClassId] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
-
-  // Dedicated Change Password states for Student
-  const [oldPasswordInput, setOldPasswordInput] = useState("");
-  const [newPasswordInput, setNewPasswordInput] = useState("");
-  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
-  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
-  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
-  const [changePasswordMessage, setChangePasswordMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
-  const [showOldPass, setShowOldPass] = useState(false);
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
-
-  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!oldPasswordInput || !newPasswordInput) {
-      setChangePasswordMessage({ text: "Password lama dan password baru wajib diisi.", type: "error" });
-      return;
-    }
-    if (newPasswordInput !== confirmPasswordInput) {
-      setChangePasswordMessage({ text: "Konfirmasi password baru tidak cocok.", type: "error" });
-      return;
-    }
-    if (newPasswordInput.length < 6) {
-      setChangePasswordMessage({ text: "Password baru minimal 6 karakter.", type: "error" });
-      return;
-    }
-
-    setChangePasswordLoading(true);
-    setChangePasswordMessage(null);
-
-    try {
-      const res = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          oldPassword: oldPasswordInput,
-          newPassword: newPasswordInput,
-        }),
-      });
-      const json = await res.json();
-      if (res.ok && json.success) {
-        setChangePasswordMessage({ text: "Password Anda berhasil diperbarui!", type: "success" });
-        setOldPasswordInput("");
-        setNewPasswordInput("");
-        setConfirmPasswordInput("");
-      } else {
-        setChangePasswordMessage({ text: json.message || "Gagal mengubah password.", type: "error" });
-      }
-    } catch {
-      setChangePasswordMessage({ text: "Terjadi kesalahan koneksi server.", type: "error" });
-    } finally {
-      setChangePasswordLoading(false);
-    }
-  };
 
   const fetchChatMessages = async (teacherId: number) => {
     setLoadingChat(true);
@@ -503,6 +453,10 @@ export default function StudentDashboard() {
     setEditUsername(data.student.username);
     setEditAvatar(data.student.avatar || "");
     setEditClassId(data.student.class_id ? String(data.student.class_id) : "");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowProfileNewPass(false);
+    setShowProfileConfirmPass(false);
     setIsEditingProfile(true);
     setProfileMessage(null);
   };
@@ -525,9 +479,15 @@ export default function StudentDashboard() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
-      setProfileMessage("Gagal: Konfirmasi password baru tidak cocok.");
-      return;
+    if (newPassword) {
+      if (newPassword.length < 6) {
+        setProfileMessage("Gagal: Password baru minimal 6 karakter.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setProfileMessage("Gagal: Konfirmasi password baru tidak cocok.");
+        return;
+      }
     }
     setSavingProfile(true);
     setProfileMessage(null);
@@ -791,7 +751,26 @@ export default function StudentDashboard() {
 
   // --- Student Grades Memos & Handlers ---
   const studentGrades = useMemo(() => {
-    return data?.grades || [];
+    const raw = [...(data?.grades || [])];
+    // Sort descending by completion date or id to guarantee latest attempt (Nilai Akhir) comes first
+    raw.sort((a, b) => {
+      const timeA = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const timeB = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) {
+        return timeB - timeA;
+      }
+      return (b.id || 0) - (a.id || 0);
+    });
+
+    const seen = new Set<string>();
+    return raw.filter((g) => {
+      const key = g.type === "Pretest"
+        ? `${g.classId || 0}_pretest_${g.subjectId || g.quizId}`
+        : `${g.classId || 0}_posttest_${g.moduleId || g.quizId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [data?.grades]);
 
   const studentAvailableClasses = useMemo(() => {
@@ -964,7 +943,7 @@ export default function StudentDashboard() {
         `"${s.teacherName.replace(/"/g, '""')}"`,
         s.grades.length,
         s.grades.length > 0 ? s.avgScore : "-",
-        s.grades.length === 0 ? "Belum Ada Nilai" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+        s.grades.length === 0 ? "Belum Ada Nilai" : s.avgScore >= 70 ? "Lulus" : "Tidak Lulus",
       ]);
       rows.push([
         "",
@@ -975,7 +954,7 @@ export default function StudentDashboard() {
         "",
         `"${classGrades.length} total kuis"`,
         avgGradeScore,
-        avgGradeScore >= 70 ? "Tuntas" : "Perlu Bimbingan",
+        avgGradeScore >= 70 ? "Lulus" : "Tidak Lulus",
       ]);
     } else {
       if (filteredClassGrades.length === 0) {
@@ -990,7 +969,7 @@ export default function StudentDashboard() {
         "Judul Kuis",
         "Mata Pelajaran",
         "Tipe Kuis",
-        "Nilai",
+        "Nilai Akhir",
         "Tanggal Selesai",
       ];
       rows = filteredClassGrades.map((g, idx) => [
@@ -1065,7 +1044,7 @@ export default function StudentDashboard() {
                 <td>${s.teacherName}</td>
                 <td class="text-center">${s.grades.length > 0 ? `${s.grades.length} Kuis (${s.pretestCount} Pretest, ${s.posttestCount} Posttest)` : "Belum ada evaluasi"}</td>
                 <td class="text-center ${s.grades.length > 0 ? (s.avgScore >= 70 ? "score-pass" : "score-fail") : ""}">${s.grades.length > 0 ? s.avgScore : "-"}</td>
-                <td class="text-center ${s.avgScore >= 70 && s.grades.length > 0 ? "score-pass" : ""}">${s.grades.length === 0 ? "Belum Diambil" : s.avgScore >= 70 ? "Tuntas" : "Perlu Bimbingan"}</td>
+                <td class="text-center ${s.grades.length > 0 ? (s.avgScore >= 70 ? "score-pass" : "score-fail") : ""}">${s.grades.length === 0 ? "Belum Diambil" : s.avgScore >= 70 ? "Lulus" : "Tidak Lulus"}</td>
               </tr>
             `
               )
@@ -1090,7 +1069,7 @@ export default function StudentDashboard() {
               <th>Mata Pelajaran</th>
               <th>Kelas & TA</th>
               <th class="text-center">Tipe</th>
-              <th class="text-center">Nilai</th>
+              <th class="text-center">Nilai Akhir</th>
               <th>Tanggal Selesai</th>
             </tr>
           </thead>
@@ -1331,7 +1310,18 @@ export default function StudentDashboard() {
   const positiveMoodPercent = moodPercent;
   const neutralMoodPercent = totalWeeklyJournals > 0 ? Math.round((neutralMoodCount / totalWeeklyJournals) * 100) : 0;
   const lowMoodPercent = totalWeeklyJournals > 0 ? Math.round((lowMoodCount / totalWeeklyJournals) * 100) : 0;
-  const todayJournal = recentJournals.some((j) => new Date(j.logged_at).toDateString() === new Date().toDateString());
+  const formatLocalDate = (dt: Date | string | number): string => {
+    const dObj = new Date(dt);
+    if (isNaN(dObj.getTime())) return "";
+    const year = dObj.getFullYear();
+    const month = String(dObj.getMonth() + 1).padStart(2, "0");
+    const day = String(dObj.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const todayDate = new Date();
+  const todayStr = formatLocalDate(todayDate);
+  const todayJournal = (journals || []).find((j: any) => formatLocalDate(j.logged_at) === todayStr);
 
   let dominantMoodPercent = 0;
   let dominantMoodLabel = "Belum Ada";
@@ -1352,33 +1342,19 @@ export default function StudentDashboard() {
   }
 
   // Calculation for Weekly Mood Bar Chart (Senin - Minggu)
-  const todayDate = new Date();
   const dayOfWeek = todayDate.getDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const mondayDate = new Date(todayDate);
-  mondayDate.setDate(todayDate.getDate() + mondayOffset);
+  const mondayDate = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate() + mondayOffset, 12, 0, 0);
 
   const dayNames = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
   const weeklyMoodBars = dayNames.map((dayLabel, index) => {
-    const d = new Date(mondayDate);
-    d.setDate(mondayDate.getDate() + index);
-    const dateStr = d.toISOString().split("T")[0];
-    const isToday =
-      d.getFullYear() === todayDate.getFullYear() &&
-      d.getMonth() === todayDate.getMonth() &&
-      d.getDate() === todayDate.getDate();
-    
-    const todayReset = new Date().setHours(0,0,0,0);
-    const cellReset = new Date(d).setHours(0,0,0,0);
-    const isFuture = cellReset > todayReset;
+    const d = new Date(mondayDate.getFullYear(), mondayDate.getMonth(), mondayDate.getDate() + index, 12, 0, 0);
+    const dateStr = formatLocalDate(d);
+    const isToday = dateStr === todayStr;
+    const isFuture = dateStr > todayStr;
 
     const journal = (journals || []).find((j: any) => {
-      const jd = new Date(j.logged_at);
-      return (
-        jd.getFullYear() === d.getFullYear() &&
-        jd.getMonth() === d.getMonth() &&
-        jd.getDate() === d.getDate()
-      );
+      return formatLocalDate(j.logged_at) === dateStr;
     });
 
     const moodEmoji = journal ? MOOD_EMOJIS.find((m) => m.score === journal.mood_score) : null;
@@ -1988,43 +1964,295 @@ export default function StudentDashboard() {
                     {/* Left Column (md:col-span-2): Status Mental, Progres Belajar, Screening Bulanan */}
                     <div className="md:col-span-2 space-y-4 flex flex-col justify-between">
                       {/* Card 1: Status Mental Siswa */}
-                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2 shrink-0">
+                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2.5 shrink-0">
                         <div className="flex items-center justify-between">
                           <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Status Mental Siswa</span>
-                          <span className="text-3xs text-zinc-500 font-mono font-bold">Ringkasan</span>
+                          <span className="text-3xs text-zinc-400 font-mono font-bold">Kondisi Terkini</span>
                         </div>
-                        <div className="px-3.5 py-2.5 rounded-xl bg-[#5A77DF]/10 border border-[#5A77DF]/20 text-[14px] font-extrabold text-[#3E53A2] uppercase leading-relaxed">
-                          {student.mental_level}
+                        
+                        {/* Status Badge */}
+                        <div className={`px-3.5 py-2.5 rounded-xl border flex items-center gap-2.5 ${
+                          student.mental_level?.toLowerCase().includes("perlu pendampingan")
+                            ? "bg-rose-50/80 border-rose-200/80 text-rose-700"
+                            : student.mental_level?.toLowerCase().includes("sudah pendampingan")
+                            ? "bg-amber-50/80 border-amber-200/80 text-amber-700"
+                            : student.mental_level?.toLowerCase().includes("sehat") || student.mental_level?.toLowerCase().includes("stabil")
+                            ? "bg-emerald-50/80 border-emerald-200/80 text-emerald-700"
+                            : "bg-[#5A77DF]/10 border-[#5A77DF]/20 text-[#3E53A2]"
+                        }`}>
+                          {student.mental_level?.toLowerCase().includes("perlu pendampingan") ? (
+                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                          ) : student.mental_level?.toLowerCase().includes("sudah pendampingan") ? (
+                            <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          )}
+                          <span className="text-xs font-black uppercase tracking-wide">
+                            {student.mental_level || "Belum Ada Data"}
+                          </span>
                         </div>
+
+                        {/* Description Text (Singkat & Jelas) */}
+                        <p className="text-2xs text-zinc-600 font-medium">
+                          {student.mental_level?.toLowerCase().includes("perlu pendampingan")
+                            ? "Perlu ruang aman untuk berdiskusi. Guru BK siap mendampingimu."
+                            : student.mental_level?.toLowerCase().includes("sudah pendampingan")
+                            ? "Sesi pendampingan selesai. Tetap jaga kondisi emosionalmu."
+                            : student.mental_level?.toLowerCase().includes("sehat") || student.mental_level?.toLowerCase().includes("stabil")
+                            ? "Kondisi emosionalmu sehat & stabil. Pertahankan ritme belajarmu!"
+                            : "Pantau kondisi mentalmu melalui jurnal & screening berkala."}
+                        </p>
+
+                        {/* Action if Perlu Pendampingan or Chat BK */}
+                        {student.mental_level?.toLowerCase().includes("perlu pendampingan") && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab("chat_bk")}
+                            className="inline-flex items-center gap-1.5 text-2xs font-extrabold text-[#5A77DF] hover:text-[#3E53A2] transition-colors pt-0.5 group cursor-pointer"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Konsultasi dengan Guru BK</span>
+                            <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                          </button>
+                        )}
                       </div>
 
-                      {/* Card 2: Progres Belajar */}
-                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2 shrink-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Modul Belajar</span>
-                          <span className="text-3xs text-zinc-500 font-mono font-bold">{student.module_progress}% Progress</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div
-                            className="relative flex h-24 w-24 items-center justify-center rounded-full shrink-0 shadow-inner"
-                            style={{
-                              background: `conic-gradient(#5A77DF ${student.module_progress}%, #e2e8f0 ${student.module_progress}% 100%)`,
-                            }}
-                          >
-                            <div className="absolute inset-1 rounded-full bg-white" />
-                            <div className="relative text-center">
-                              <p className="text-base font-black text-zinc-900">{student.module_progress}%</p>
+                      {/* Card 2: Progres Belajar (Dynamic 3D Isometric Pie Chart) */}
+                      {(() => {
+                        const completedPercent = Math.min(100, Math.max(0, student.module_progress || 0));
+                        const remainingPercent = 100 - completedPercent;
+                        const completedCount = completedAccessibleCount;
+                        const remainingCount = Math.max(0, totalAccessibleCount - completedAccessibleCount);
+                        
+                        const cx = 170;
+                        const cy = 86;
+                        const rx = 70;
+                        const ry = 32;
+                        const h = 22;
+
+                        // Dynamic SVG path calculations for 3D isometric cylinder
+                        const isZero = completedPercent <= 0;
+                        const isFull = completedPercent >= 100;
+                        
+                        const angle = (completedPercent / 100) * 360;
+                        const rad = (angle * Math.PI) / 180;
+                        const endX = +(cx + rx * Math.cos(rad)).toFixed(2);
+                        const endY = +(cy + ry * Math.sin(rad)).toFixed(2);
+                        const largeArc = angle > 180 ? 1 : 0;
+
+                        return (
+                          <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2 shrink-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                                Modul Belajar
+                              </span>
+                              <span className={`text-3xs font-bold px-2 py-0.5 rounded-full border ${
+                                isFull
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : !isZero
+                                  ? "bg-[#5A77DF]/10 text-[#3E53A2] border-[#5A77DF]/20"
+                                  : "bg-zinc-100 text-zinc-500 border-zinc-200"
+                              }`}>
+                                {isFull ? "Tuntas 100%" : !isZero ? `${completedPercent}% Sedang Aktif` : "Belum Dimulai"}
+                              </span>
+                            </div>
+
+                            {/* 3D Isometric Pie Chart (Compact Tight ViewBox) */}
+                            <div className="relative w-full flex items-center justify-center">
+                              <svg
+                                viewBox="0 8 340 136"
+                                className="w-full max-w-[320px] h-auto drop-shadow-xs select-none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <defs>
+                                  {/* Tuntas (DigiMind Blue Gradient) */}
+                                  <linearGradient id="pieTuntasTop" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor="#818CF8" />
+                                    <stop offset="100%" stopColor="#5A77DF" />
+                                  </linearGradient>
+                                  <linearGradient id="pieTuntasSide" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#4338CA" />
+                                    <stop offset="100%" stopColor="#312E81" />
+                                  </linearGradient>
+
+                                  {/* Belum Selesai (Soft Slate Gradient) */}
+                                  <linearGradient id="pieRemainingTop" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stopColor="#F8FAFC" />
+                                    <stop offset="100%" stopColor="#EEF2FF" />
+                                  </linearGradient>
+                                  <linearGradient id="pieRemainingSide" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#CBD5E1" />
+                                    <stop offset="100%" stopColor="#94A3B8" />
+                                  </linearGradient>
+                                </defs>
+
+                                {/* Drop Shadow under 3D cylinder */}
+                                <ellipse cx={cx} cy={cy + 30} rx={rx + 2} ry={18} fill="#5A77DF" opacity="0.12" filter="blur(5px)" />
+
+                                {isZero ? (
+                                  /* Case 1: 0% Progress (Entire cylinder is Belum Selesai) */
+                                  <g id="pieZero">
+                                    {/* Front 3D Skirt */}
+                                    <path
+                                      d={`M ${cx + rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx - rx} ${cy} L ${cx - rx} ${cy + h} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy + h} Z`}
+                                      fill="url(#pieRemainingSide)"
+                                      stroke="#94A3B8"
+                                      strokeWidth="0.75"
+                                    />
+                                    {/* Top Ellipse */}
+                                    <ellipse
+                                      cx={cx}
+                                      cy={cy}
+                                      rx={rx}
+                                      ry={ry}
+                                      fill="url(#pieRemainingTop)"
+                                      stroke="#CBD5E1"
+                                      strokeWidth="1"
+                                    />
+                                  </g>
+                                ) : isFull ? (
+                                  /* Case 2: 100% Progress (Entire cylinder is Tuntas) */
+                                  <g id="pieFull">
+                                    {/* Front 3D Skirt */}
+                                    <path
+                                      d={`M ${cx + rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx - rx} ${cy} L ${cx - rx} ${cy + h} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy + h} Z`}
+                                      fill="url(#pieTuntasSide)"
+                                      stroke="#3730A3"
+                                      strokeWidth="0.75"
+                                    />
+                                    {/* Top Ellipse */}
+                                    <ellipse
+                                      cx={cx}
+                                      cy={cy}
+                                      rx={rx}
+                                      ry={ry}
+                                      fill="url(#pieTuntasTop)"
+                                      stroke="#4338CA"
+                                      strokeWidth="1"
+                                    />
+                                  </g>
+                                ) : (
+                                  /* Case 3: Partial Progress (Split 3D cylinder) */
+                                  <g id="piePartial">
+                                    {/* 1. Remaining Slice (Back/Base) */}
+                                    <path
+                                      d={`M ${cx} ${cy} L ${endX} ${endY} A ${rx} ${ry} 0 ${1 - largeArc} 1 ${cx + rx} ${cy} Z`}
+                                      fill="url(#pieRemainingTop)"
+                                      stroke="#CBD5E1"
+                                      strokeWidth="0.75"
+                                    />
+
+                                    {/* 2. Remaining 3D Skirt (if in front half 0-180) */}
+                                    {angle < 180 && (
+                                      <path
+                                        d={`M ${endX} ${endY} A ${rx} ${ry} 0 0 1 ${cx - rx} ${cy} L ${cx - rx} ${cy + h} A ${rx} ${ry} 0 0 0 ${endX} ${endY + h} Z`}
+                                        fill="url(#pieRemainingSide)"
+                                        stroke="#94A3B8"
+                                        strokeWidth="0.75"
+                                      />
+                                    )}
+
+                                    {/* 3. Tuntas 3D Skirt (Front arc) */}
+                                    <path
+                                      d={angle <= 180
+                                        ? `M ${cx + rx} ${cy} A ${rx} ${ry} 0 0 1 ${endX} ${endY} L ${endX} ${endY + h} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy + h} Z`
+                                        : `M ${cx + rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx - rx} ${cy} L ${cx - rx} ${cy + h} A ${rx} ${ry} 0 0 0 ${cx + rx} ${cy + h} Z`}
+                                      fill="url(#pieTuntasSide)"
+                                      stroke="#3730A3"
+                                      strokeWidth="0.75"
+                                    />
+
+                                    {/* 4. Radial Cut Wall into depth */}
+                                    <path
+                                      d={`M ${cx} ${cy} L ${endX} ${endY} L ${endX} ${endY + h} L ${cx} ${cy + h} Z`}
+                                      fill="#312E81"
+                                      opacity="0.85"
+                                    />
+
+                                    {/* 5. Tuntas Slice Top */}
+                                    <path
+                                      d={`M ${cx} ${cy} L ${cx + rx} ${cy} A ${rx} ${ry} 0 ${largeArc} 1 ${endX} ${endY} Z`}
+                                      fill="url(#pieTuntasTop)"
+                                      stroke="#4338CA"
+                                      strokeWidth="0.75"
+                                    />
+                                  </g>
+                                )}
+
+                                {/* CALLOUT BOX 1: MODUL TUNTAS (Left) */}
+                                <g id="calloutTuntas">
+                                  <polyline
+                                    points="115,74 92,32 80,32"
+                                    fill="none"
+                                    stroke="#5A77DF"
+                                    strokeWidth="1.75"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <circle cx="115" cy="74" r="3" fill="#5A77DF" />
+                                  <rect x="4" y="14" width="76" height="36" rx="6" fill="#FFFFFF" stroke="#5A77DF" strokeWidth="1.75" />
+                                  <text x="42" y="24" fontSize="7" fontWeight="800" fontFamily="system-ui, sans-serif" fill="#5A77DF" textAnchor="middle">
+                                    MODUL TUNTAS
+                                  </text>
+                                  <text x="42" y="38" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif" fill="#18181B" textAnchor="middle">
+                                    {completedPercent}%
+                                  </text>
+                                  <text x="42" y="46" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif" fill="#71717A" textAnchor="middle">
+                                    {completedCount} dari {totalAccessibleCount} Modul
+                                  </text>
+                                </g>
+
+                                {/* CALLOUT BOX 2: BELUM SELESAI (Right) */}
+                                <g id="calloutRemaining">
+                                  <polyline
+                                    points="225,82 248,32 260,32"
+                                    fill="none"
+                                    stroke="#818CF8"
+                                    strokeWidth="1.75"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                  <circle cx="225" cy="82" r="3" fill="#818CF8" />
+                                  <rect x="260" y="14" width="76" height="36" rx="6" fill="#FFFFFF" stroke="#818CF8" strokeWidth="1.75" />
+                                  <text x="298" y="24" fontSize="7" fontWeight="800" fontFamily="system-ui, sans-serif" fill="#4F46E5" textAnchor="middle">
+                                    BELUM SELESAI
+                                  </text>
+                                  <text x="298" y="38" fontSize="13" fontWeight="900" fontFamily="system-ui, sans-serif" fill="#18181B" textAnchor="middle">
+                                    {remainingPercent}%
+                                  </text>
+                                  <text x="298" y="46" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif" fill="#71717A" textAnchor="middle">
+                                    {remainingCount} Modul Sisa
+                                  </text>
+                                </g>
+                              </svg>
+                            </div>
+
+                            {/* Mini horizontal progress bar */}
+                            <div className="w-full bg-zinc-100 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-[#5A77DF] to-[#818CF8] rounded-full transition-all duration-500"
+                                style={{ width: `${completedPercent}%` }}
+                              />
+                            </div>
+
+                            {/* Footer Info & Action */}
+                            <div className="pt-1 border-t border-zinc-100 flex items-center justify-between">
+                              <p className="text-2xs text-zinc-500 font-medium">
+                                <span className="font-bold text-zinc-700">{completedCount}</span> dari {totalAccessibleCount} modul tuntas
+                              </p>
+
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab("modul")}
+                                className="inline-flex items-center gap-1 text-2xs font-extrabold text-[#5A77DF] hover:text-[#3E53A2] transition-colors group cursor-pointer"
+                              >
+                                <span>Buka Modul</span>
+                                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                              </button>
                             </div>
                           </div>
-                          <div className="space-y-0.5">
-                            <p className="text-[15px] font-bold text-zinc-900">Progres Pembelajaran</p>
-                            <p className="text-2xs text-zinc-600 font-medium">
-                              {completedAccessibleCount} dari {totalAccessibleCount} modul selesai
-                            </p>
-                            {/* <p className="text-[10px] text-zinc-400">Total modul aktif pada kelas Anda.</p> */}
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
 
                       {/* Card 3: Screening Bulanan (Flex-1 Auto-Stretch to align 100% flush with Badge card) */}
                       <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-4 flex-1 flex flex-col justify-between">
@@ -2093,10 +2321,22 @@ export default function StudentDashboard() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => setActiveTab("jurnal")}
+                            onClick={() => {
+                              if (todayJournal) {
+                                setSelectedDetailJournal(todayJournal);
+                                setShowDetailModal(true);
+                              } else {
+                                setSelectedFillDate(todayStr);
+                                setMoodScore(3);
+                                setJournalNotes("");
+                                setJournalActivities("");
+                                setJournalMessage(null);
+                                setShowFillModal(true);
+                              }
+                            }}
                             className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 px-3 py-2 text-2xs font-extrabold text-[#3E53A2] transition hover:bg-[#5A77DF]/20 cursor-pointer self-start sm:self-center shrink-0"
                           >
-                            {todayJournal ? "Lihat Jurnal" : "+ Isi Jurnal Hari Ini"}
+                            {todayJournal ? "Lihat Jurnal Hari Ini" : "+ Isi Jurnal Hari Ini"}
                           </button>
                         </div>
 
@@ -2123,8 +2363,10 @@ export default function StudentDashboard() {
                                         setShowFillModal(true);
                                       }
                                     }}
-                                    className={`flex flex-col items-center justify-end gap-2 cursor-pointer group relative ${
-                                      bar.isFuture && !bar.journal ? "opacity-40 cursor-not-allowed" : ""
+                                    className={`flex flex-col items-center justify-end gap-2 relative transition-all ${
+                                      bar.isFuture && !bar.journal
+                                        ? "cursor-default select-none"
+                                        : "cursor-pointer group"
                                     }`}
                                     title={
                                       bar.journal
@@ -2134,17 +2376,37 @@ export default function StudentDashboard() {
                                         : `${bar.dayLabel}: Klik untuk isi jurnal`
                                     }
                                   >
-                                    {/* Vector SVG Mood Emoji Floating Above Bar */}
-                                    <div className="h-9 w-9 flex items-center justify-center transition-all duration-200 group-hover:scale-125 shrink-0">
+                                    {/* Mood Emoji or Bright Indicator Floating Above Bar */}
+                                    <div className="h-9 w-9 flex items-center justify-center shrink-0">
                                       {bar.journal && bar.moodEmoji ? (
-                                        bar.moodEmoji.icon
+                                        <div className="transition-all duration-200 group-hover:scale-125">
+                                          {bar.moodEmoji.icon}
+                                        </div>
+                                      ) : bar.isToday ? (
+                                        <div className="h-7 w-7 rounded-full bg-[#5A77DF]/15 border-2 border-[#5A77DF] flex items-center justify-center text-[#5A77DF] font-black text-xs shadow-xs animate-pulse group-hover:scale-110 transition-transform">
+                                          +
+                                        </div>
+                                      ) : !bar.isFuture ? (
+                                        <div className="h-7 w-7 rounded-full bg-white border-2 border-dashed border-[#5A77DF]/40 flex items-center justify-center text-[#5A77DF] font-bold text-xs shadow-xs group-hover:border-[#5A77DF] group-hover:bg-[#5A77DF]/10 transition-all">
+                                          +
+                                        </div>
                                       ) : (
-                                        <div className="h-1.5 w-1.5 rounded-full bg-[#5A77DF]/30" />
+                                        <div className="h-7 w-7 rounded-full bg-white border border-[#5A77DF]/40 flex items-center justify-center shadow-xs">
+                                          <div className="h-2 w-2 rounded-full bg-[#5A77DF]/70" />
+                                        </div>
                                       )}
                                     </div>
 
                                     {/* Vertical Bar Slot Track */}
-                                    <div className="w-full max-w-[32px] sm:max-w-[38px] bg-white border border-[#5A77DF]/20 rounded-2xl overflow-hidden h-28 sm:h-32 flex items-end p-1 shadow-2xs">
+                                    <div
+                                      className={`w-full max-w-[32px] sm:max-w-[38px] rounded-2xl overflow-hidden h-28 sm:h-32 flex items-end p-1 shadow-xs transition-all ${
+                                        bar.moodScore > 0
+                                          ? "bg-white border border-[#5A77DF]/30"
+                                          : !bar.isFuture
+                                          ? "bg-white border-2 border-dashed border-[#5A77DF]/40 group-hover:border-[#5A77DF] group-hover:bg-[#5A77DF]/5"
+                                          : "bg-white border border-[#5A77DF]/35"
+                                      }`}
+                                    >
                                       {bar.moodScore > 0 ? (
                                         <div
                                           className={`w-full rounded-xl transition-all duration-500 ${
@@ -2157,19 +2419,27 @@ export default function StudentDashboard() {
                                           style={{ height: `${heightPercent}%` }}
                                         />
                                       ) : (
-                                        <div className="w-full h-1.5 bg-[#5A77DF]/20 rounded-full" />
+                                        <div
+                                          className={`w-full rounded-full transition-all ${
+                                            !bar.isFuture
+                                              ? "h-2.5 bg-[#5A77DF]/35 group-hover:bg-[#5A77DF]"
+                                              : "h-2 bg-[#5A77DF]/30"
+                                          }`}
+                                        />
                                       )}
                                     </div>
 
                                     {/* Day Label at Bottom */}
                                     <div className="mt-1 flex items-center justify-center">
                                       <span
-                                        className={`text-[10px] font-extrabold uppercase font-mono transition-all ${
+                                        className={`text-[11px] font-extrabold uppercase font-mono transition-all ${
                                           bar.isToday
-                                            ? "bg-[#5A77DF] text-white px-2 py-0.5 rounded-full shadow-2xs"
+                                            ? "bg-[#5A77DF] text-white px-2.5 py-0.5 rounded-full shadow-xs"
                                             : bar.journal
                                             ? "text-[#3E53A2] font-black"
-                                            : "text-zinc-500"
+                                            : !bar.isFuture
+                                            ? "text-[#3E53A2] font-bold group-hover:text-[#5A77DF]"
+                                            : "text-[#3E53A2]/80 font-bold"
                                         }`}
                                       >
                                         {bar.dayLabel}
@@ -2692,7 +2962,7 @@ export default function StudentDashboard() {
 
                         <div className="p-4 rounded-2xl bg-white border border-zinc-200 shadow-2xs space-y-1">
                           <span className="text-3xs uppercase tracking-wider text-zinc-400 font-black font-mono">
-                            Mapel Tuntas (≥ 70)
+                            Mapel Lulus (≥ 70)
                           </span>
                           <p className="text-xl sm:text-2xl font-black text-purple-700 font-mono">
                             {subjectSummaries.filter((s) => s.grades.length > 0 && s.avgScore >= 70).length} <span className="text-xs font-normal text-zinc-400">Mapel</span>
@@ -2884,10 +3154,10 @@ export default function StudentDashboard() {
                                               className={`inline-block text-3xs font-extrabold px-2.5 py-0.5 rounded-md border ${
                                                 isPassed
                                                   ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                                                  : "bg-rose-50 text-rose-800 border-rose-200"
                                               }`}
                                             >
-                                              {isPassed ? "Tuntas" : "Perlu Bimbingan"}
+                                              {isPassed ? "Lulus" : "Tidak Lulus"}
                                             </span>
                                           ) : (
                                             <span className="text-3xs text-zinc-400 font-mono">Belum Diambil</span>
@@ -2915,9 +3185,9 @@ export default function StudentDashboard() {
                               {filteredSubjectSummaries.length > 0 && (
                                 <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
                                   <tr className="divide-x divide-zinc-150">
+                                    <td colSpan={3} className="px-4 py-3.5" />
                                     <td
-                                      colSpan={4}
-                                      className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                      className="px-4 py-3.5 text-center font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
                                     >
                                       Rata-Rata Seluruh Mapel:
                                     </td>
@@ -2959,7 +3229,7 @@ export default function StudentDashboard() {
                                     Tipe Kuis
                                   </th>
                                   <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono text-center">
-                                    Nilai / Skor
+                                    Nilai Akhir
                                   </th>
                                   <th className="px-4 py-3.5 text-3xs font-black uppercase tracking-wider text-zinc-500 font-mono">
                                     Tanggal Selesai
@@ -3040,9 +3310,9 @@ export default function StudentDashboard() {
                               {filteredClassGrades.length > 0 && (
                                 <tfoot className="bg-[#f8faff] border-t-2 border-[#5A77DF]/30">
                                   <tr className="divide-x divide-zinc-150">
+                                    <td colSpan={4} className="px-4 py-3.5" />
                                     <td
-                                      colSpan={5}
-                                      className="px-4 py-3.5 text-right font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
+                                      className="px-4 py-3.5 text-center font-black uppercase tracking-wider text-xs text-zinc-700 font-mono"
                                     >
                                       Rata-Rata Nilai Mapel:
                                     </td>
@@ -3145,8 +3415,7 @@ export default function StudentDashboard() {
                           const isFuture = cellDateReset > todayReset;
 
                           const journal = (journals || []).find((j: any) => {
-                            const jd = new Date(j.logged_at);
-                            return jd.getFullYear() === currentYear && jd.getMonth() === currentMonth && jd.getDate() === day;
+                            return formatLocalDate(j.logged_at) === dateString;
                           });
 
                           const moodEmoji = journal ? MOOD_EMOJIS.find(m => m.score === journal.mood_score) : null;
@@ -3279,15 +3548,23 @@ export default function StudentDashboard() {
                   </div>
 
                   {profileMessage && (
-                    <div className={`p-4 rounded-xl text-xs font-semibold ${profileMessage.includes("berhasil") ? "bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30" : "bg-rose-500/10 text-rose-600 border border-rose-500/20"}`}>
+                    <div
+                      className={`p-4 rounded-xl text-xs font-semibold ${
+                        profileMessage.includes("berhasil")
+                          ? "bg-[#5A77DF]/10 text-[#3E53A2] border border-[#5A77DF]/30"
+                          : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                      }`}
+                    >
                       {profileMessage}
                     </div>
                   )}
 
                   {isEditingProfile ? (
-                    <form onSubmit={handleSaveProfile} className="space-y-6">
+                    <form onSubmit={handleSaveProfile} className="space-y-5 text-left">
                       <div className="space-y-3 flex flex-col items-center">
-                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono self-start">Foto Profil</label>
+                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono self-start">
+                          Foto Profil
+                        </label>
                         <div className="relative group w-24 h-24 rounded-full overflow-hidden border-2 border-[#5A77DF]/30 bg-[#5A77DF]/10 flex items-center justify-center text-5xl select-none shadow-sm">
                           {editAvatar ? (
                             editAvatar.startsWith("data:") || editAvatar.startsWith("http") ? (
@@ -3316,44 +3593,103 @@ export default function StudentDashboard() {
                         </div>
                       </div>
 
-                      <div className="space-y-2 text-left">
-                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Nama Lengkap</label>
+                      <div className="space-y-2">
+                        <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                          Nama Lengkap
+                        </label>
                         <input
                           type="text"
                           required
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs"
                         />
                       </div>
 
-                      <div className="space-y-2 text-left">
-                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Username</label>
-                        <input
-                          type="text"
-                          required
-                          value={editUsername}
-                          onChange={(e) => setEditUsername(e.target.value.replace(/\s+/g, "").toLowerCase())}
-                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                            Username
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editUsername}
+                            onChange={(e) => setEditUsername(e.target.value.replace(/\s+/g, "").toLowerCase())}
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono flex items-center justify-between">
+                            <span>Tingkatan Kelas</span>
+                          </label>
+                          <select
+                            value={editClassId}
+                            onChange={(e) => setEditClassId(e.target.value)}
+                            className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold cursor-pointer shadow-xs"
+                          >
+                            {data?.allClasses?.map((cls: any) => (
+                              <option key={cls.id} value={cls.id}>
+                                {cls.displayName || `${cls.name} ${cls.major ? `(${cls.major}) ` : ""}• ${cls.academicYear || (cls.academic_year ? `TA ${cls.academic_year}` : "TA 2025/2026")}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
-                      <div className="space-y-2 text-left">
-                        <label className="text-xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono flex items-center justify-between">
-                          <span>Tingkatan Kelas (Naik Kelas)</span>
-                          <span className="text-3xs text-zinc-400 font-normal lowercase">(Pilih kelas baru jika Anda naik kelas)</span>
-                        </label>
-                        <select
-                          value={editClassId}
-                          onChange={(e) => setEditClassId(e.target.value)}
-                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-bold cursor-pointer"
-                        >
-                          {data?.allClasses?.map((cls: any) => (
-                            <option key={cls.id} value={cls.id}>
-                              {cls.displayName || `${cls.name} ${cls.major ? `(${cls.major}) ` : ""}• ${cls.academicYear || (cls.academic_year ? `TA ${cls.academic_year}` : "TA 2025/2026")}`}
-                            </option>
-                          ))}
-                        </select>
+                      {/* Ubah Password (Opsional) */}
+                      <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-[#5A77DF]" />
+                          <span className="text-xs font-extrabold text-zinc-900">Ubah Password (Opsional)</span>
+                        </div>
+                        <p className="text-3xs text-zinc-500">Kosongkan jika tidak ingin mengubah password saat ini.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                              Password Baru
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showProfileNewPass ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="Minimal 6 karakter"
+                                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowProfileNewPass(!showProfileNewPass)}
+                                className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold cursor-pointer"
+                              >
+                                {showProfileNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                              Konfirmasi Password Baru
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showProfileConfirmPass ? "text" : "password"}
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="Ulangi password baru"
+                                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-bold shadow-xs pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowProfileConfirmPass(!showProfileConfirmPass)}
+                                className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold cursor-pointer"
+                              >
+                                {showProfileConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="flex gap-2 pt-2">
@@ -3377,7 +3713,7 @@ export default function StudentDashboard() {
                     <div className="space-y-6">
                       <div className="flex flex-col items-center justify-center p-6 bg-zinc-50 rounded-2xl border border-zinc-150">
                         <div className="relative h-24 w-24 rounded-full p-[3px] bg-gradient-to-tr from-[#5A77DF] via-[#7B93EC] to-purple-500 shadow-md mb-3">
-                          <div className="h-full w-full rounded-full overflow-hidden bg-white flex items-center justify-center">
+                          <div className="h-full w-full rounded-full overflow-hidden bg-white flex items-center justify-center select-none">
                             {student.avatar ? (
                               student.avatar.startsWith("data:") || student.avatar.startsWith("http") ? (
                                 <img src={student.avatar} alt="Avatar" className="h-full w-full object-cover" />
@@ -3398,115 +3734,40 @@ export default function StudentDashboard() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-left">
                         <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
-                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Kelas & Tahun Ajaran</div>
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Kelas & Tahun Ajaran
+                          </div>
                           <div className="font-extrabold text-zinc-900">
                             {student.class_name || student.class} {student.class_major ? `(${student.class_major})` : ""} {student.academicYear ? `• ${student.academicYear}` : ""}
                           </div>
                         </div>
                         <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
-                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">Hasil SRQ-29 Status Mental</div>
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Hasil SRQ-29 Status Mental
+                          </div>
                           <div className="font-extrabold text-[#3E53A2] uppercase">{student.mental_level}</div>
                         </div>
-                      </div>
-
-                      {/* Keamanan & Ganti Password Section */}
-                      <div className="rounded-2xl border border-[#5A77DF]/20 bg-[#5A77DF]/5 p-5 text-left space-y-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Lock className="h-5 w-5 text-[#5A77DF]" />
-                            <h4 className="text-sm font-extrabold text-zinc-900">Keamanan & Ganti Password</h4>
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            NIS & Username
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setShowChangePasswordModal(!showChangePasswordModal)}
-                            className="text-2xs font-extrabold text-[#3E53A2] hover:underline cursor-pointer"
-                          >
-                            {showChangePasswordModal ? "Tutup Form" : "Ubah Password"}
-                          </button>
+                          <div className="font-extrabold text-zinc-900">
+                            NIS: {student.nis} • @{student.username}
+                          </div>
                         </div>
-
-                        {showChangePasswordModal && (
-                          <form onSubmit={handleChangePasswordSubmit} className="space-y-4 pt-2 border-t border-[#5A77DF]/15">
-                            {changePasswordMessage && (
-                              <div className={`p-3.5 rounded-xl text-2xs font-bold ${changePasswordMessage.type === "success" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : "bg-rose-500/10 text-rose-600 border border-rose-500/20"}`}>
-                                {changePasswordMessage.text}
-                              </div>
-                            )}
-
-                            <div className="space-y-1.5">
-                              <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Password Lama</label>
-                              <div className="relative">
-                                <input
-                                  type={showOldPass ? "text" : "password"}
-                                  required
-                                  value={oldPasswordInput}
-                                  onChange={(e) => setOldPasswordInput(e.target.value)}
-                                  placeholder="Masukkan password saat ini"
-                                  className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => setShowOldPass(!showOldPass)}
-                                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                >
-                                  {showOldPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div className="space-y-1.5">
-                                <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Password Baru</label>
-                                <div className="relative">
-                                  <input
-                                    type={showNewPass ? "text" : "password"}
-                                    required
-                                    value={newPasswordInput}
-                                    onChange={(e) => setNewPasswordInput(e.target.value)}
-                                    placeholder="Minimal 6 karakter"
-                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowNewPass(!showNewPass)}
-                                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                  >
-                                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="space-y-1.5">
-                                <label className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Konfirmasi Password Baru</label>
-                                <div className="relative">
-                                  <input
-                                    type={showConfirmPass ? "text" : "password"}
-                                    required
-                                    value={confirmPasswordInput}
-                                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
-                                    placeholder="Ulangi password baru"
-                                    className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium pr-10"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowConfirmPass(!showConfirmPass)}
-                                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 text-xs font-bold"
-                                  >
-                                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-
-                            <button
-                              type="submit"
-                              disabled={changePasswordLoading}
-                              className="w-full py-2.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] text-white text-xs font-extrabold shadow-sm transition cursor-pointer disabled:opacity-50"
-                            >
-                              {changePasswordLoading ? "Memproses..." : "Simpan Password Baru"}
-                            </button>
-                          </form>
-                        )}
+                        <div className="p-4 rounded-xl border border-[#5A77DF]/20 bg-[#5A77DF]/5">
+                          <div className="text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-extrabold mb-1">
+                            Status Akun
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="inline-block text-2xs font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl">
+                              Aktif & Terverifikasi
+                            </span>
+                            <span className="text-3xs text-zinc-400 font-mono">
+                              {student.email || ""}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-3 pt-2">

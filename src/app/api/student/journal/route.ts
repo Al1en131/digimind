@@ -112,6 +112,12 @@ export async function POST(request: Request) {
     const scoreNum = parseInt(moodScore);
     const aiFeedback = generateAIFeedback(scoreNum, notes || "", activities || "");
 
+    let loggedAtDate = new Date();
+    if (date) {
+      const cleanDate = String(date).split("T")[0];
+      loggedAtDate = new Date(`${cleanDate}T12:00:00.000Z`);
+    }
+
     const journal = await prisma.mentalJournal.create({
       data: {
         student_id: student.id,
@@ -119,7 +125,7 @@ export async function POST(request: Request) {
         notes: encryptSensitiveText(notes || "") || "",
         activities: encryptSensitiveText(activities || "") || "",
         ai_feedback: encryptSensitiveText(aiFeedback) || "",
-        logged_at: date ? new Date(date) : new Date()
+        logged_at: loggedAtDate
       }
     });
 

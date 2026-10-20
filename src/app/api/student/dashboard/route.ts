@@ -289,53 +289,79 @@ export async function GET() {
       return a.displayName.localeCompare(b.displayName);
     });
 
-    const gradesFormatted = studentAttempts
+    // Deduplicate quiz attempts: keep ONLY the latest attempt (Nilai Akhir) per evaluation item.
+    // Older attempts (e.g. from a failed test before remedial retake) are excluded so only the final score appears.
+    const seenEvaluationKeys = new Set<string>();
+    const eligibleAttempts = studentAttempts
       .filter((a) => a.completed_at !== null)
       .filter((a) => !(a.quiz.type === "pretest" && a.quiz.subject_id === null && a.quiz.module_id === null))
-      .map((a) => {
-        const quizClassObj = a.quiz.subject?.class || a.quiz.module?.subject?.class || student.class;
-        const quizClassYear = quizClassObj
-          ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
-          : formatAcademicYear(student.class.created_at, student.class.academic_year);
-        const quizClassName = quizClassObj
-          ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
-          : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
-        const subjName = a.quiz.subject?.name || a.quiz.module?.subject?.name || (a.quiz.type === "pretest" ? "Pretest Diagnostik" : "Kuis Modul");
-        const classId = quizClassObj ? quizClassObj.id : student.class_id;
-
-        return {
-          id: a.id,
-          quizId: a.quiz_id,
-          title: a.quiz.title,
-          type: a.quiz.type === "pretest" ? "Pretest" : "Posttest",
-          classId,
-          className: quizClassName,
-          classYear: quizClassYear,
-          academicYear: `TA ${quizClassYear}`,
-          subjectId: a.quiz.subject_id || a.quiz.module?.subject_id || null,
-          subjectName: subjName,
-          score: a.score,
-          completedAt: a.completed_at
-            ? new Date(a.completed_at).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "-",
-          answers: a.answers.map((ans) => {
-            const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
-            return {
-              id: ans.id,
-              question: ans.question.question,
-              selectedOption: ans.option.option_text,
-              isCorrect: ans.option.is_correct ?? false,
-              correctOption: correctOpt ? correctOpt.option_text : null,
-            };
-          }),
-        };
+      .sort((a, b) => {
+        const timeA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+        const timeB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return b.id - a.id;
       });
+
+    const finalAttempts = eligibleAttempts.filter((a) => {
+      const quizClassObj = a.quiz.subject?.class || a.quiz.module?.subject?.class || student.class;
+      const classId = quizClassObj ? quizClassObj.id : student.class_id;
+      // Key uniquely identifying the module posttest or subject pretest
+      const evalKey = a.quiz.type === "pretest"
+        ? `${classId}_pretest_${a.quiz.subject_id || a.quiz_id}`
+        : `${classId}_posttest_${a.quiz.module_id || a.quiz_id}`;
+
+      if (seenEvaluationKeys.has(evalKey)) {
+        return false;
+      }
+      seenEvaluationKeys.add(evalKey);
+      return true;
+    });
+
+    const gradesFormatted = finalAttempts.map((a) => {
+      const quizClassObj = a.quiz.subject?.class || a.quiz.module?.subject?.class || student.class;
+      const quizClassYear = quizClassObj
+        ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
+        : formatAcademicYear(student.class.created_at, student.class.academic_year);
+      const quizClassName = quizClassObj
+        ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
+        : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
+      const subjName = a.quiz.subject?.name || a.quiz.module?.subject?.name || (a.quiz.type === "pretest" ? "Pretest Diagnostik" : "Kuis Modul");
+      const classId = quizClassObj ? quizClassObj.id : student.class_id;
+
+      return {
+        id: a.id,
+        quizId: a.quiz_id,
+        moduleId: a.quiz.module_id || null,
+        title: a.quiz.title,
+        type: a.quiz.type === "pretest" ? "Pretest" : "Posttest",
+        classId,
+        className: quizClassName,
+        classYear: quizClassYear,
+        academicYear: `TA ${quizClassYear}`,
+        subjectId: a.quiz.subject_id || a.quiz.module?.subject_id || null,
+        subjectName: subjName,
+        score: a.score,
+        completedAt: a.completed_at
+          ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "-",
+        answers: a.answers.map((ans) => {
+          const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+          return {
+            id: ans.id,
+            question: ans.question.question,
+            selectedOption: ans.option.option_text,
+            isCorrect: ans.option.is_correct ?? false,
+            correctOption: correctOpt ? correctOpt.option_text : null,
+          };
+        }),
+      };
+    });
 
     // Compute accurate overall progress across accessible modules for this student's class & level
     const { progressPercent } = await calculateStudentModuleProgress(
@@ -454,6 +480,7 @@ export async function GET() {
         id: student.id,
         name: student.name,
         username: student.user.username,
+        email: student.user.email,
         nis: student.nis,
         class_id: student.class_id,
         class_name: student.class.name,

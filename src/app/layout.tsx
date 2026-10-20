@@ -15,10 +15,13 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "\u200E",
+  title: "DigiMind",
   description: "Platform Pembelajaran Literasi & Kesehatan Mental Adaptif",
   icons: {
-    icon: "/icon.png",
+    icon: [
+      { url: "/icon.png" },
+      { url: "/favicon.ico" },
+    ],
     shortcut: "/icon.png",
     apple: "/apple-icon.png",
   },

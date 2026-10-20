@@ -365,8 +365,9 @@ export async function GET() {
         ? Math.round(totalModProgSum / moduleProgressesList.length)
         : 0;
 
-      // Format Pretests (Excluding Screening / Mental Pretests, scoped to teacher's subjects for subject teachers)
-      const pretests = student.quiz_attempts
+      // Format Pretests (Excluding Screening / Mental Pretests, keep ONLY the latest attempt per subject)
+      const latestPretestsMap = new Map();
+      student.quiz_attempts
         .filter((a) => {
           if (a.quiz.type !== "pretest") return false;
           const titleLower = (a.quiz.title || "").toLowerCase();
@@ -385,46 +386,51 @@ export async function GET() {
           }
           return true;
         })
-        .map((a) => {
-          const quizClassObj = a.quiz.subject?.class;
-          const quizClassYear = quizClassObj
-            ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
-            : formatAcademicYear(student.class.created_at, student.class.academic_year);
-          const quizClassName = quizClassObj
-            ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
-            : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
+        .forEach((a) => {
+          const key = a.quiz.subject_id || a.quiz_id;
+          if (!latestPretestsMap.has(key)) {
+            const quizClassObj = a.quiz.subject?.class;
+            const quizClassYear = quizClassObj
+              ? formatAcademicYear(quizClassObj.created_at, quizClassObj.academic_year)
+              : formatAcademicYear(student.class.created_at, student.class.academic_year);
+            const quizClassName = quizClassObj
+              ? (quizClassObj.major ? `${quizClassObj.name} ${quizClassObj.major}` : quizClassObj.name)
+              : (student.class.major ? `${student.class.name} ${student.class.major}` : student.class.name);
 
-          return {
-            id: a.id,
-            quizId: a.quiz_id,
-            title: a.quiz.title,
-            subjectId: a.quiz.subject_id,
-            subjectName: a.quiz.subject?.name || "Pretest",
-            className: quizClassName,
-            classYear: quizClassYear,
-            academicYear: `TA ${quizClassYear}`,
-            score: a.score,
-            completedAt: a.completed_at
-              ? new Date(a.completed_at).toLocaleDateString("id-ID", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "-",
-            answers: a.answers.map((ans) => {
-              const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
-              return {
-                id: ans.id,
-                question: ans.question.question,
-                selectedOption: ans.option.option_text,
-                isCorrect: ans.option.is_correct ?? false,
-                correctOption: correctOpt ? correctOpt.option_text : null,
-              };
-            }),
-          };
+            latestPretestsMap.set(key, {
+              id: a.id,
+              quizId: a.quiz_id,
+              title: a.quiz.title,
+              subjectId: a.quiz.subject_id,
+              subjectName: a.quiz.subject?.name || "Pretest",
+              className: quizClassName,
+              classYear: quizClassYear,
+              academicYear: `TA ${quizClassYear}`,
+              score: a.score,
+              completedAt: a.completed_at
+                ? new Date(a.completed_at).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "-",
+              answers: a.answers.map((ans) => {
+                const correctOpt = ans.question.options?.find((o: any) => o.is_correct);
+                return {
+                  id: ans.id,
+                  question: ans.question.question,
+                  selectedOption: ans.option.option_text,
+                  isCorrect: ans.option.is_correct ?? false,
+                  correctOption: correctOpt ? correctOpt.option_text : null,
+                };
+              }),
+            });
+          }
         });
+
+      const pretests = Array.from(latestPretestsMap.values());
 
       // Format Posttests (Keep ONLY the LATEST attempt per module, scoped to teacher's subjects)
       const latestPosttestsMap = new Map();
@@ -635,6 +641,8 @@ export async function GET() {
       teacher: {
         id: teacher.id,
         name: teacher.name,
+        username: teacher.user.username,
+        email: teacher.user.email,
         nip: teacher.nip,
         specialization: teacher.specialization || "Guru",
         position: teacher.position || (teacher.type === "bk" ? "Guru Bimbingan Konseling" : "Guru Mata Pelajaran"),
