@@ -10,7 +10,7 @@ const isRemote =
   (process.env.MYSQL_HOST && process.env.MYSQL_HOST !== "localhost" && process.env.MYSQL_HOST !== "127.0.0.1");
 
 const sslConfig = isRemote
-  ? { minVersion: "TLSv1.2", rejectUnauthorized: true }
+  ? { minVersion: "TLSv1.2" as const, rejectUnauthorized: true }
   : undefined;
 
 let prisma: PrismaClient;
