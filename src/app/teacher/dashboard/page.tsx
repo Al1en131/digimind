@@ -92,6 +92,7 @@ type Student = {
   isCurrentClass?: boolean;
   isPastStudent?: boolean;
   levelName?: string;
+  subjectLevels?: Array<{ subjectId: number; levelName: string; score: number }>;
   literacyProgress: number;
   mentalHealthProgress: number;
   subjectProgress: number;
@@ -1086,6 +1087,10 @@ export default function TeacherDashboardPage() {
         })),
       }));
 
+    const resolvedQuizTitle =
+      newQuizTitle.trim() ||
+      (posttestPayload.length > 0 ? `Kuis Postest ${newModuleTitle.trim()}` : null);
+
     const isEdit = !!editingModuleId;
     const method = isEdit ? "PUT" : "POST";
     const payload = isEdit
@@ -1095,7 +1100,7 @@ export default function TeacherDashboardPage() {
           content: newModuleContent.trim(),
           videoUrl: newModuleVideoUrl.trim() || null,
           levelName: newModuleLevel,
-          quizTitle: newQuizTitle.trim() || null,
+          quizTitle: resolvedQuizTitle,
           questions: posttestPayload,
         }
       : {
@@ -1104,7 +1109,7 @@ export default function TeacherDashboardPage() {
           content: newModuleContent.trim(),
           videoUrl: newModuleVideoUrl.trim() || null,
           levelName: newModuleLevel,
-          quizTitle: newQuizTitle.trim() || null,
+          quizTitle: resolvedQuizTitle,
           questions: posttestPayload,
         };
 
@@ -1496,8 +1501,22 @@ export default function TeacherDashboardPage() {
         ? Math.round(totalModProg / filteredModuleProgresses.length) 
         : 0;
 
+      const matchedSubjectLevel = (student.subjectLevels || []).find((sl) => {
+        if (filterId && Number(sl.subjectId) === Number(filterId)) return true;
+        const subjObj = (data?.teacher?.subjects || []).find(
+          (s: any) => Number(s.id) === Number(sl.subjectId)
+        );
+        return subjObj?.name === filterName;
+      });
+      const resolvedLevelName = matchedSubjectLevel
+        ? matchedSubjectLevel.levelName
+        : filteredPretests.length > 0
+          ? student.levelName || "Belum Pretest"
+          : "Belum Pretest";
+
       return {
         ...student,
+        levelName: resolvedLevelName,
         moduleProgressesList: filteredModuleProgresses,
         pretests: filteredPretests,
         posttests: filteredPosttests,
@@ -1618,6 +1637,7 @@ export default function TeacherDashboardPage() {
       id: string;
       attemptId: number;
       title: string;
+      subjectId?: number | null;
       subjectName: string;
       className: string;
       academicYear: string;
@@ -1632,6 +1652,7 @@ export default function TeacherDashboardPage() {
         id: `pretest-${pt.id}`,
         attemptId: pt.id,
         title: pt.title,
+        subjectId: pt.subjectId ?? null,
         subjectName: pt.subjectName || "Mata Pelajaran Guru",
         className: pt.className || viewingStudent.className,
         academicYear: pt.academicYear || viewingStudent.academicYear || "TA 2025/2026",
@@ -1647,6 +1668,7 @@ export default function TeacherDashboardPage() {
         id: `posttest-${pt.id}`,
         attemptId: pt.id,
         title: pt.moduleTitle || pt.title || "Kuis Modul",
+        subjectId: pt.subjectId ?? null,
         subjectName: pt.subjectName || "Mata Pelajaran Guru",
         className: pt.className || viewingStudent.className,
         academicYear: pt.academicYear || viewingStudent.academicYear || "TA 2025/2026",
@@ -1661,7 +1683,7 @@ export default function TeacherDashboardPage() {
   }, [viewingStudent]);
 
   const viewingStudentSubjectSummaries = useMemo(() => {
-    if (!viewingStudentAttempts || viewingStudentAttempts.length === 0) return [];
+    if (!viewingStudent) return [];
     const map = new Map<string, {
       subjectName: string;
       teacherName: string;
@@ -1670,6 +1692,25 @@ export default function TeacherDashboardPage() {
       pretestCount: number;
       posttestCount: number;
     }>();
+
+    // Seed with subjects taught by the teacher in the student's class (excluding BK)
+    (data?.teacher?.subjects || []).forEach((s: any) => {
+      if (!s.name || s.name === "Bimbingan Konseling (BK)") return;
+      const matchesClass =
+        (viewingStudent.classId && Number(s.classId) === Number(viewingStudent.classId)) ||
+        (s.className && viewingStudent.className && viewingStudent.className.includes(s.className));
+      if (matchesClass && !map.has(s.name)) {
+        const tName = s.assignedTeacher?.name || data?.teacher?.name || "-";
+        map.set(s.name, {
+          subjectName: s.name,
+          teacherName: tName,
+          grades: [],
+          avgScore: 0,
+          pretestCount: 0,
+          posttestCount: 0,
+        });
+      }
+    });
 
     // Populate grades into each subject from viewingStudentAttempts
     viewingStudentAttempts.forEach((g) => {
@@ -1721,7 +1762,7 @@ export default function TeacherDashboardPage() {
     });
 
     return Array.from(map.values()).sort((a, b) => a.subjectName.localeCompare(b.subjectName));
-  }, [viewingStudentAttempts, viewingStudent?.moduleProgressesList, data?.teacher?.subjects, data?.teacher?.name]);
+  }, [viewingStudent, viewingStudentAttempts, viewingStudent?.moduleProgressesList, data?.teacher?.subjects, data?.teacher?.name]);
 
   const viewingOverallAvgScore = useMemo(() => {
     const activeSummaries = viewingStudentSubjectSummaries.filter((s) => s.grades.length > 0);
@@ -1751,7 +1792,16 @@ export default function TeacherDashboardPage() {
   const filteredViewingStudentAttempts = useMemo(() => {
     let list = viewingStudentAttempts;
     if (viewingGradeSubjectFilter !== "ALL") {
-      list = list.filter((a) => a.subjectName === viewingGradeSubjectFilter);
+      list = list.filter((a) => {
+        if (
+          activeTargetSubject &&
+          activeTargetSubject.name === viewingGradeSubjectFilter &&
+          a.subjectId
+        ) {
+          return Number(a.subjectId) === Number(activeTargetSubject.id);
+        }
+        return a.subjectName === viewingGradeSubjectFilter;
+      });
     }
     if (gradeSearchQuery.trim()) {
       const q = gradeSearchQuery.toLowerCase();
@@ -1762,7 +1812,7 @@ export default function TeacherDashboardPage() {
       );
     }
     return list;
-  }, [viewingStudentAttempts, viewingGradeSubjectFilter, gradeSearchQuery]);
+  }, [viewingStudentAttempts, viewingGradeSubjectFilter, gradeSearchQuery, activeTargetSubject]);
 
   const handleExportViewingStudentCSV = () => {
     if (!viewingStudent) {
@@ -2187,6 +2237,12 @@ export default function TeacherDashboardPage() {
       }));
 
       setPosttestQuestions(importedQuestions);
+      if (!newQuizTitle.trim()) {
+        const defaultTitle = newModuleTitle.trim()
+          ? `Kuis Postest ${newModuleTitle.trim()}`
+          : `Kuis Postest ${file.name.replace(/\.[^/.]+$/, "")}`;
+        setNewQuizTitle(defaultTitle);
+      }
       alert(`Berhasil mengimpor ${importedQuestions.length} soal dari file ke form posttest!`);
     } catch (err: any) {
       alert("Terjadi kesalahan saat memproses file: " + (err?.message || "Error"));
@@ -2806,6 +2862,8 @@ export default function TeacherDashboardPage() {
                                 setSelectedMapelFilterId("ALL");
                                 setSelectedTAFilter("ALL");
                                 setGuruMapelStudentViewMode("ALL");
+                                setViewingStudentGradesId(null);
+                                setViewingGradeSubjectFilter("ALL");
                                 setActiveView("siswa");
                               }}
                               className={`flex w-full items-center gap-2 px-3 py-2 rounded-xl text-left text-3xs font-extrabold transition cursor-pointer ${
@@ -2846,6 +2904,8 @@ export default function TeacherDashboardPage() {
                                             setSelectedMapelFilterId("ALL");
                                             setSelectedTAFilter("ALL");
                                             setGuruMapelStudentViewMode("ALL");
+                                            setViewingStudentGradesId(null);
+                                            setViewingGradeSubjectFilter("ALL");
                                             setActiveView("siswa");
                                           }}
                                           className={`flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-3xs font-bold transition cursor-pointer ${
@@ -2892,6 +2952,8 @@ export default function TeacherDashboardPage() {
                                             setSelectedMapelFilterId("ALL");
                                             setSelectedClassFilter("ALL");
                                             setGuruMapelStudentViewMode("ALL");
+                                            setViewingStudentGradesId(null);
+                                            setViewingGradeSubjectFilter("ALL");
                                             setActiveView("siswa");
                                           }}
                                           className={`flex items-center justify-between w-full px-2 py-1.5 rounded-lg text-3xs font-extrabold tracking-wider uppercase transition cursor-pointer ${
@@ -2935,6 +2997,16 @@ export default function TeacherDashboardPage() {
                                                   setSelectedTAFilter(rawYear);
                                                   setGuruMapelStudentViewMode("BY_MAPEL");
                                                   setSelectedClassFilter("ALL");
+                                                  setViewingGradeSubjectFilter(s.name);
+                                                  setGradeSearchQuery("");
+                                                  if (
+                                                    viewingStudent &&
+                                                    viewingStudent.classId &&
+                                                    s.classId &&
+                                                    Number(viewingStudent.classId) !== Number(s.classId)
+                                                  ) {
+                                                    setViewingStudentGradesId(null);
+                                                  }
                                                   setActiveView("siswa");
                                                 }}
                                                 className={`flex w-full flex-col gap-0.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
@@ -3949,23 +4021,53 @@ export default function TeacherDashboardPage() {
                   <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-100 pb-5">
                       <div>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-3xs font-extrabold uppercase tracking-widest text-[#5A77DF] font-mono">
-                            Halaman Nilai Siswa
-                          </span>
-                          <span className="rounded-lg bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-0.5 text-2xs font-extrabold text-[#3E53A2]">
-                            {viewingStudent.className}
-                          </span>
-                          <span
-                            className={`rounded-lg border px-2.5 py-0.5 text-2xs font-extrabold ${
-                              viewingStudent.levelName === "Belum Pretest"
-                                ? "bg-zinc-100 border-zinc-200 text-zinc-600"
-                                : "bg-emerald-50 border-emerald-200 text-emerald-700"
-                            }`}
-                          >
-                            Level: {viewingStudent.levelName || "Belum Pretest"}
-                          </span>
-                        </div>
+                        {(() => {
+                          let displayLevelName = viewingStudent.levelName || "Belum Pretest";
+                          if (viewingGradeSubjectFilter !== "ALL") {
+                            const matchedLevel = (viewingStudent.subjectLevels || []).find((sl) => {
+                              if (
+                                activeTargetSubject &&
+                                activeTargetSubject.name === viewingGradeSubjectFilter &&
+                                Number(sl.subjectId) === Number(activeTargetSubject.id)
+                              ) {
+                                return true;
+                              }
+                              const subjObj = (data?.teacher?.subjects || []).find(
+                                (s: any) => Number(s.id) === Number(sl.subjectId)
+                              );
+                              return subjObj?.name === viewingGradeSubjectFilter;
+                            });
+                            displayLevelName = matchedLevel
+                              ? matchedLevel.levelName
+                              : filteredViewingStudentAttempts.some((a) => a.type === "Pretest")
+                                ? viewingStudent.levelName || "Belum Pretest"
+                                : "Belum Pretest";
+                          }
+                          return (
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <span className="text-3xs font-extrabold uppercase tracking-widest text-[#5A77DF] font-mono">
+                                Halaman Nilai Siswa
+                              </span>
+                              <span className="rounded-lg bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-0.5 text-2xs font-extrabold text-[#3E53A2]">
+                                {viewingStudent.className}
+                              </span>
+                              {viewingGradeSubjectFilter !== "ALL" && (
+                                <span className="rounded-lg bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 text-2xs font-extrabold text-indigo-700">
+                                  Mapel: {viewingGradeSubjectFilter}
+                                </span>
+                              )}
+                              <span
+                                className={`rounded-lg border px-2.5 py-0.5 text-2xs font-extrabold ${
+                                  displayLevelName === "Belum Pretest"
+                                    ? "bg-zinc-100 border-zinc-200 text-zinc-600"
+                                    : "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                }`}
+                              >
+                                Level: {displayLevelName}
+                              </span>
+                            </div>
+                          );
+                        })()}
                         <h2 className="text-2xl font-black text-zinc-900">
                           {viewingStudent.name}
                         </h2>
@@ -4094,7 +4196,7 @@ export default function TeacherDashboardPage() {
                                 )}
                               </div>
 
-                              {viewingGradeSubjectFilter !== "ALL" ? (
+                              {viewingGradeSubjectFilter !== "ALL" && (isWaliKelas || data?.teacher?.type === "bk") ? (
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -4106,11 +4208,11 @@ export default function TeacherDashboardPage() {
                                   <ArrowRight className="w-3.5 h-3.5 rotate-180" />
                                   <span>Kembali ke Rekap Semua Nilai</span>
                                 </button>
-                              ) : (
+                              ) : viewingGradeSubjectFilter === "ALL" ? (
                                 <span className="text-3xs text-zinc-400 font-mono hidden sm:block">
                                   Menampilkan nilai rata-rata tiap mata pelajaran yang diikuti siswa
                                 </span>
-                              )}
+                              ) : null}
                             </div>
 
                             <div className="flex justify-end mb-2">
@@ -4232,21 +4334,17 @@ export default function TeacherDashboardPage() {
                                                   )}
                                                 </td>
                                                 <td className="px-4 py-3.5 text-center">
-                                                  {hasGrades ? (
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => {
-                                                        setViewingGradeSubjectFilter(subSummary.subjectName);
-                                                        setGradeSearchQuery("");
-                                                      }}
-                                                      title="Lihat Rincian Nilai Mapel"
-                                                      className="p-1.5 rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 text-[#5A77DF] transition cursor-pointer inline-flex items-center justify-center shadow-2xs group"
-                                                    >
-                                                      <Eye className="w-4 h-4 text-[#5A77DF] group-hover:scale-110 transition-transform" />
-                                                    </button>
-                                                  ) : (
-                                                    <span className="text-3xs text-zinc-400 font-mono">-</span>
-                                                  )}
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setViewingGradeSubjectFilter(subSummary.subjectName);
+                                                      setGradeSearchQuery("");
+                                                    }}
+                                                    title="Lihat Rincian Nilai Mapel"
+                                                    className="p-1.5 rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 text-[#5A77DF] transition cursor-pointer inline-flex items-center justify-center shadow-2xs group"
+                                                  >
+                                                    <Eye className="w-4 h-4 text-[#5A77DF] group-hover:scale-110 transition-transform" />
+                                                  </button>
                                                 </td>
                                               </tr>
                                             );
@@ -4661,7 +4759,12 @@ export default function TeacherDashboardPage() {
                                     e.stopPropagation();
                                     setSelectedStudentId(student.id);
                                     setViewingStudentGradesId(student.id);
-                                    setViewingGradeSubjectFilter("ALL");
+                                    setViewingGradeSubjectFilter(
+                                      activeTargetSubject?.name ||
+                                        (selectedSubjectFilter !== "ALL"
+                                          ? selectedSubjectFilter
+                                          : "ALL")
+                                    );
                                     setGradeSearchQuery("");
                                     window.scrollTo({ top: 0, behavior: "smooth" });
                                   }}
@@ -4682,9 +4785,9 @@ export default function TeacherDashboardPage() {
                 {/* Pop-Up Data Siswa Modal */}
                 {modalStudentId &&
                   (() => {
-                    const modalStudent = data.students.find(
-                      (s) => s.id === modalStudentId,
-                    );
+                    const modalStudent =
+                      filteredStudents.find((s) => s.id === modalStudentId) ||
+                      data.students.find((s) => s.id === modalStudentId);
                     if (!modalStudent) return null;
                     return (
                       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
@@ -5097,7 +5200,12 @@ export default function TeacherDashboardPage() {
                                 const sId = modalStudentId;
                                 setModalStudentId(null);
                                 setViewingStudentGradesId(sId);
-                                setViewingGradeSubjectFilter("ALL");
+                                setViewingGradeSubjectFilter(
+                                  activeTargetSubject?.name ||
+                                    (selectedSubjectFilter !== "ALL"
+                                      ? selectedSubjectFilter
+                                      : "ALL")
+                                );
                                 setGradeSearchQuery("");
                                 window.scrollTo({ top: 0, behavior: "smooth" });
                               }}
@@ -7175,115 +7283,113 @@ export default function TeacherDashboardPage() {
                     />
                   </div>
 
-                  {newQuizTitle.trim() && (
-                    <div className="space-y-4 pt-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-2xs font-extrabold uppercase tracking-wider text-zinc-600 font-mono">
-                          Daftar Soal Postest ({posttestQuestions.length} Soal):
-                        </label>
-                        <div>
-                          <input
-                            type="file"
-                            accept=".docx,.pdf,.txt"
-                            ref={posttestFileInputRef}
-                            onChange={handleImportPosttest}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            disabled={importingPosttest}
-                            onClick={() => posttestFileInputRef.current?.click()}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-[#5A77DF]/40 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 px-3 py-1.5 text-2xs font-extrabold text-[#3E53A2] transition cursor-pointer shadow-2xs"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-[#5A77DF]" />
-                            <span>{importingPosttest ? "Memproses File..." : "Import Soal (Word / PDF)"}</span>
-                          </button>
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-2xs font-extrabold uppercase tracking-wider text-zinc-600 font-mono">
+                        Daftar Soal Postest ({posttestQuestions.length} Soal):
+                      </label>
+                      <div>
+                        <input
+                          type="file"
+                          accept=".docx,.pdf,.txt"
+                          ref={posttestFileInputRef}
+                          onChange={handleImportPosttest}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          disabled={importingPosttest}
+                          onClick={() => posttestFileInputRef.current?.click()}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-[#5A77DF]/40 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 px-3 py-1.5 text-2xs font-extrabold text-[#3E53A2] transition cursor-pointer shadow-2xs"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-[#5A77DF]" />
+                          <span>{importingPosttest ? "Memproses File..." : "Import Soal (Word / PDF)"}</span>
+                        </button>
+                      </div>
+                    </div>
+                    {posttestQuestions.map((q, qIdx) => (
+                      <div
+                        key={qIdx}
+                        className="space-y-3 border border-zinc-200 bg-white rounded-xl p-4 relative shadow-xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-extrabold text-xs text-[#3E53A2] font-mono">
+                            Soal Postest #{qIdx + 1}:
+                          </span>
+                          {posttestQuestions.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRemovePosttestQuestion(qIdx)
+                              }
+                              className="text-3xs text-rose-700 hover:text-rose-800 font-bold bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus Soal</span>
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={q.question}
+                          onChange={(e) =>
+                            handlePosttestQuestionChange(
+                              qIdx,
+                              "question",
+                              e.target.value,
+                            )
+                          }
+                          placeholder={`Tulis pertanyaan postest ke-${qIdx + 1}...`}
+                          className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium"
+                        />
+                        <div className="grid gap-2 sm:grid-cols-2 mt-2">
+                          {q.options.map((opt, optIdx) => (
+                            <div
+                              key={optIdx}
+                              className="flex items-center gap-2"
+                            >
+                              <input
+                                type="radio"
+                                name={`posttest_${qIdx}_correct`}
+                                checked={q.correctIndex === optIdx}
+                                onChange={() =>
+                                  handlePosttestQuestionChange(
+                                    qIdx,
+                                    "correctIndex",
+                                    optIdx,
+                                  )
+                                }
+                                className="accent-[#5A77DF]"
+                              />
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={(e) =>
+                                  handlePosttestQuestionChange(
+                                    qIdx,
+                                    "option",
+                                    e.target.value,
+                                    optIdx,
+                                  )
+                                }
+                                placeholder={`Pilihan ${String.fromCharCode(65 + optIdx)}`}
+                                className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium"
+                              />
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      {posttestQuestions.map((q, qIdx) => (
-                        <div
-                          key={qIdx}
-                          className="space-y-3 border border-zinc-200 bg-white rounded-xl p-4 relative shadow-xs"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-xs text-[#3E53A2] font-mono">
-                              Soal Postest #{qIdx + 1}:
-                            </span>
-                            {posttestQuestions.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleRemovePosttestQuestion(qIdx)
-                                }
-                                className="text-3xs text-rose-700 hover:text-rose-800 font-bold bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition cursor-pointer flex items-center gap-1"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Hapus Soal</span>
-                              </button>
-                            )}
-                          </div>
-                          <input
-                            type="text"
-                            value={q.question}
-                            onChange={(e) =>
-                              handlePosttestQuestionChange(
-                                qIdx,
-                                "question",
-                                e.target.value,
-                              )
-                            }
-                            placeholder={`Tulis pertanyaan postest ke-${qIdx + 1}...`}
-                            className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium"
-                          />
-                          <div className="grid gap-2 sm:grid-cols-2 mt-2">
-                            {q.options.map((opt, optIdx) => (
-                              <div
-                                key={optIdx}
-                                className="flex items-center gap-2"
-                              >
-                                <input
-                                  type="radio"
-                                  name={`posttest_${qIdx}_correct`}
-                                  checked={q.correctIndex === optIdx}
-                                  onChange={() =>
-                                    handlePosttestQuestionChange(
-                                      qIdx,
-                                      "correctIndex",
-                                      optIdx,
-                                    )
-                                  }
-                                  className="accent-[#5A77DF]"
-                                />
-                                <input
-                                  type="text"
-                                  value={opt}
-                                  onChange={(e) =>
-                                    handlePosttestQuestionChange(
-                                      qIdx,
-                                      "option",
-                                      e.target.value,
-                                      optIdx,
-                                    )
-                                  }
-                                  placeholder={`Pilihan ${String.fromCharCode(65 + optIdx)}`}
-                                  className="flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] font-medium"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                    ))}
 
-                      <button
-                        type="button"
-                        onClick={handleAddPosttestQuestion}
-                        className="w-full py-2.5 rounded-xl border border-[#5A77DF]/30 bg-white hover:bg-[#5A77DF]/10 text-[#3E53A2] font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
-                      >
-                        <PlusCircle className="w-4 h-4 text-[#5A77DF]" />
-                        <span>Tambah Soal Postest</span>
-                      </button>
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={handleAddPosttestQuestion}
+                      className="w-full py-2.5 rounded-xl border border-[#5A77DF]/30 bg-white hover:bg-[#5A77DF]/10 text-[#3E53A2] font-extrabold text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
+                    >
+                      <PlusCircle className="w-4 h-4 text-[#5A77DF]" />
+                      <span>Tambah Soal Postest</span>
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>

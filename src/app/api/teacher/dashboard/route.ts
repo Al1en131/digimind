@@ -319,6 +319,21 @@ export async function GET() {
       else if (targetLevelStr === "belum pretest") levelNameDisplay = "Belum Pretest";
       else if (rawStudentLevelName) levelNameDisplay = rawStudentLevelName;
 
+      const subjectLevels = (student.subject_levels || []).map((sl: any) => {
+        const raw = (sl.level_name || "").trim().toLowerCase();
+        let display = "Belum Pretest";
+        if (raw.startsWith("advan")) display = "Advanced";
+        else if (raw.startsWith("intermed")) display = "Intermediate";
+        else if (raw.startsWith("basic") || raw.startsWith("beginner")) display = "Basic";
+        else if (raw === "belum pretest") display = "Belum Pretest";
+        else if (sl.level_name) display = sl.level_name;
+        return {
+          subjectId: sl.subject_id,
+          levelName: display,
+          score: sl.score,
+        };
+      });
+
       // 3. Subject Modules progress (Filtered ONLY for teacher's subject(s) AND student's placed level)
       const moduleProgressesList = allModulesWithSubject
         .filter((mod) => {
@@ -330,16 +345,23 @@ export async function GET() {
 
           if (!matchesSubject) return false;
 
+          const subjLevelRecord = (student.subject_levels || []).find(
+            (sl: any) => sl.subject_id === mod.subject_id
+          );
+          const modTargetLevelStr = subjLevelRecord?.level_name
+            ? subjLevelRecord.level_name.trim().toLowerCase()
+            : "belum pretest";
+
           // Filter by student's placed level if student has completed placement pretest
-          if (targetLevelStr && targetLevelStr !== "belum pretest") {
+          if (modTargetLevelStr && modTargetLevelStr !== "belum pretest") {
             if (!mod.level || !mod.level.name) return false;
             const modLevelStr = mod.level.name.trim().toLowerCase();
-            const isLevelMatch = modLevelStr === targetLevelStr ||
-              (targetLevelStr.startsWith("advan") && modLevelStr.startsWith("advan")) ||
-              (targetLevelStr.startsWith("intermed") && modLevelStr.startsWith("intermed")) ||
-              (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("basic")) ||
-              (targetLevelStr.startsWith("beginner") && modLevelStr.startsWith("basic")) ||
-              (targetLevelStr.startsWith("basic") && modLevelStr.startsWith("beginner"));
+            const isLevelMatch = modLevelStr === modTargetLevelStr ||
+              (modTargetLevelStr.startsWith("advan") && modLevelStr.startsWith("advan")) ||
+              (modTargetLevelStr.startsWith("intermed") && modLevelStr.startsWith("intermed")) ||
+              (modTargetLevelStr.startsWith("basic") && modLevelStr.startsWith("basic")) ||
+              (modTargetLevelStr.startsWith("beginner") && modLevelStr.startsWith("basic")) ||
+              (modTargetLevelStr.startsWith("basic") && modLevelStr.startsWith("beginner"));
             return isLevelMatch;
           }
 
@@ -549,6 +571,7 @@ export async function GET() {
         isCurrentClass,
         isPastStudent: !isCurrentClass,
         levelName: levelNameDisplay,
+        subjectLevels,
         literacyProgress,
         mentalHealthProgress,
         subjectProgress,
