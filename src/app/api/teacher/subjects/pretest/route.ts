@@ -59,65 +59,70 @@ export async function POST(request: Request) {
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      let pretestQuiz = subject.quizzes.find((q) => q.type === "pretest");
-
-      if (!pretestQuiz) {
-        pretestQuiz = await tx.quiz.create({
-          data: {
-            title: title.trim(),
-            type: "pretest",
-            subject_id: subject.id,
-            module_id: null,
-          },
-          include: { questions: { include: { options: true } } },
-        });
-      } else {
-        await tx.quiz.update({
-          where: { id: pretestQuiz.id },
-          data: { title: title.trim() },
-        });
-
-        const existingQuestionIds = pretestQuiz.questions.map((q) => q.id);
-        if (existingQuestionIds.length > 0) {
-          await tx.option.deleteMany({
-            where: { question_id: { in: existingQuestionIds } },
-          });
-          await tx.question.deleteMany({
-            where: { quiz_id: pretestQuiz.id },
-          });
-        }
-      }
-
-      for (const q of questions) {
-        if (!q.question || !q.options || !Array.isArray(q.options)) continue;
-
-        const questionRecord = await tx.question.create({
-          data: {
-            quiz_id: pretestQuiz.id,
-            question: q.question.trim(),
-          },
-        });
-
-        for (const opt of q.options) {
-          if (!opt.optionText) continue;
-
-          await tx.option.create({
-            data: {
-              question_id: questionRecord.id,
+    const formattedQuestions = questions
+      .filter((q: any) => q.question && q.question.trim())
+      .map((q: any) => ({
+        question: q.question.trim(),
+        options: {
+          create: (q.options || [])
+            .filter((opt: any) => opt.optionText && opt.optionText.trim())
+            .map((opt: any) => ({
               option_text: opt.optionText.trim(),
               is_correct: !!opt.isCorrect,
+            })),
+        },
+      }));
+
+    await prisma.$transaction(
+      async (tx) => {
+        let pretestQuiz = subject.quizzes.find((q) => q.type === "pretest");
+
+        if (!pretestQuiz) {
+          await tx.quiz.create({
+            data: {
+              title: title.trim(),
+              type: "pretest",
+              subject_id: subject.id,
+              module_id: null,
+              questions: {
+                create: formattedQuestions,
+              },
+            },
+          });
+        } else {
+          const existingQuestionIds = pretestQuiz.questions.map((q) => q.id);
+          if (existingQuestionIds.length > 0) {
+            await tx.option.deleteMany({
+              where: { question_id: { in: existingQuestionIds } },
+            });
+            await tx.question.deleteMany({
+              where: { quiz_id: pretestQuiz.id },
+            });
+          }
+
+          await tx.quiz.update({
+            where: { id: pretestQuiz.id },
+            data: {
+              title: title.trim(),
+              questions: {
+                create: formattedQuestions,
+              },
             },
           });
         }
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
       }
-    });
+    );
 
     return NextResponse.json({
       success: true,
       message: "Kuis Pretest Mata Pelajaran berhasil disimpan!",
     });
   } catch (error: any) {
+    console.error("Error saving subject pretest:", error);
     return NextResponse.json(
       { success: false, message: "Gagal menyimpan Pretest Mata Pelajaran.", error: error.message },
       { status: 500 }

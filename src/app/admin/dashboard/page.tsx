@@ -36,10 +36,11 @@ import {
   Download,
   Printer,
   Upload,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Award
 } from "lucide-react";
 
-type DashboardTab = "overview" | "users" | "teachers" | "actors" | "classes" | "subjects" | "modules" | "quizzes" | "pretest_screening" | "attempts" | "screening";
+type DashboardTab = "overview" | "users" | "teachers" | "actors" | "classes" | "subjects" | "modules" | "quizzes" | "badges" | "pretest_screening" | "attempts";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -56,11 +57,11 @@ export default function AdminDashboardPage() {
   const [modules, setModules] = useState<any[]>([]);
   const [quizzes, setQuizzes] = useState<any[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<any[]>([]);
-  const [screeningAttempts, setScreeningAttempts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [levels, setLevels] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [adminActors, setAdminActors] = useState<any[]>([]);
+  const [badges, setBadges] = useState<any[]>([]);
 
   // Modal Control States
   const [showUserModal, setShowUserModal] = useState(false);
@@ -77,6 +78,18 @@ export default function AdminDashboardPage() {
 
   const [showQuizModal, setShowQuizModal] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
+
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<any>(null);
+  const [bName, setBName] = useState("");
+  const [bDescription, setBDescription] = useState("");
+  const [bImageUrl, setBImageUrl] = useState("🏆");
+  const [bModuleId, setBModuleId] = useState("");
+  const [uploadingBadgeImage, setUploadingBadgeImage] = useState(false);
+  const [submittingBadge, setSubmittingBadge] = useState(false);
+  const [filterBadgeSubject, setFilterBadgeSubject] = useState("all");
+  const [showRecipientsModal, setShowRecipientsModal] = useState(false);
+  const [selectedBadgeRecipients, setSelectedBadgeRecipients] = useState<any>(null);
 
   const [showQuestionsModal, setShowQuestionsModal] = useState(false);
   const [activeQuizForQuestions, setActiveQuizForQuestions] = useState<any>(null);
@@ -277,11 +290,11 @@ export default function AdminDashboardPage() {
       setModules(data.modules || []);
       setQuizzes(data.quizzes || []);
       setQuizAttempts(data.quizAttempts || []);
-      setScreeningAttempts(data.screeningAttempts || []);
       setCategories(data.categories || []);
       setLevels(data.levels || []);
       setTeachers(data.teachers || []);
       setAdminActors(data.adminActors || []);
+      setBadges(data.badges || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -558,11 +571,11 @@ export default function AdminDashboardPage() {
     { key: "manage_subjects", label: "Mata Pelajaran Sekolah", desc: "Akses ke tab Mata Pelajaran (tambah, edit, & alokasikan mapel ke guru)." },
     { key: "manage_modules", label: "Modul Pembelajaran", desc: "Akses ke tab Modul Pembelajaran (kelola isi konten modul, video youtube, kategori)." },
     { key: "manage_quizzes", label: "Kuis & Bank Soal Evaluation", desc: "Akses ke tab Kuis & Soal (kelola kuis evaluasi modul & pretest penempatan level)." },
+    { key: "manage_badges", label: "Lencana & Badge Prestasi", desc: "Akses ke tab Badge (kelola lencana apresiasi dan penghargaan pencapaian modul siswa)." },
     { key: "manage_pretest_screening", label: "Pretest Screening Mental (SRQ-29)", desc: "Akses ke tab Pretest Screening Mental (pengaturan kuesioner awal SRQ-29)." },
     { key: "manage_attempts", label: "Hasil Kuis Siswa", desc: "Akses ke tab Hasil Kuis Siswa (melihat rekapitulasi & detail lembar jawaban kuis)." },
-    { key: "manage_screening", label: "Hasil Screening SRQ-29 Siswa", desc: "Akses ke tab Hasil Screening SRQ-29 (melihat rekap riwayat screening mental bulanan)." },
     { key: "manage_academics", label: "Manajemen Akademik (Gabungan)", desc: "Izin menyeluruh mencakup Kelas, Mapel, Modul Pembelajaran, dan Kuis." },
-    { key: "manage_reports", label: "Laporan & Rekapitulasi (Gabungan)", desc: "Izin menyeluruh mencakup Hasil Kuis dan Hasil Screening SRQ-29." },
+    { key: "manage_reports", label: "Laporan & Rekapitulasi (Gabungan)", desc: "Izin menyeluruh mencakup Rekap Hasil Kuis Pembelajaran Siswa." },
   ];
 
   const handleOpenActorCreate = () => {
@@ -866,6 +879,121 @@ export default function AdminDashboardPage() {
         triggerMessage("Gagal menghapus kuis.", "error");
       }
     });
+  };
+
+  // BADGE CRUD
+  const handleOpenBadgeCreate = () => {
+    setSelectedBadge(null);
+    setBName("");
+    setBDescription("");
+    setBImageUrl("🏆");
+    setBModuleId(modules[0]?.id?.toString() || "");
+    setShowBadgeModal(true);
+  };
+
+  const handleOpenBadgeEdit = (badge: any) => {
+    setSelectedBadge(badge);
+    setBName(badge.name || "");
+    setBDescription(badge.description || "");
+    setBImageUrl(badge.image_url || "🏆");
+    setBModuleId(badge.module_id?.toString() || "");
+    setShowBadgeModal(true);
+  };
+
+  const handleUploadBadgeImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingBadgeImage(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json();
+      if (json.success && json.url) {
+        setBImageUrl(json.url);
+        triggerMessage("Gambar icon badge berhasil diunggah!", "success");
+      } else {
+        triggerMessage(json.message || "Gagal mengunggah gambar badge.", "error");
+      }
+    } catch {
+      triggerMessage("Gagal mengunggah gambar badge.", "error");
+    } finally {
+      setUploadingBadgeImage(false);
+    }
+  };
+
+  const handleBadgeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bName.trim()) {
+      triggerMessage("Nama badge wajib diisi.", "error");
+      return;
+    }
+    setSubmittingBadge(true);
+    const payload = {
+      action: selectedBadge ? "update" : "create",
+      entity: "badge",
+      data: {
+        id: selectedBadge?.id,
+        name: bName.trim(),
+        description: bDescription.trim(),
+        image_url: bImageUrl || "🏆",
+        module_id: bModuleId ? bModuleId : null
+      }
+    };
+    try {
+      const res = await fetch("/api/admin/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        triggerMessage(data.message, "success");
+        setShowBadgeModal(false);
+        loadData();
+      } else {
+        triggerMessage(data.message || "Gagal menyimpan badge.", "error");
+      }
+    } catch {
+      triggerMessage("Gagal menyimpan badge.", "error");
+    } finally {
+      setSubmittingBadge(false);
+    }
+  };
+
+  const handleBadgeDelete = (id: number) => {
+    showConfirmDialog(
+      "Hapus Badge Penghargaan",
+      "Apakah Anda yakin ingin menghapus badge ini? Siswa yang telah memperoleh badge ini juga akan kehilangan pencapaian tersebut.",
+      async () => {
+        try {
+          const res = await fetch("/api/admin/dashboard", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "delete", entity: "badge", data: { id } })
+          });
+          const data = await res.json();
+          if (data.success) {
+            triggerMessage(data.message, "success");
+            loadData();
+          } else {
+            triggerMessage(data.message || "Gagal menghapus badge.", "error");
+          }
+        } catch {
+          triggerMessage("Gagal menghapus badge.", "error");
+        }
+      }
+    );
+  };
+
+  const handleOpenRecipients = (badge: any) => {
+    setSelectedBadgeRecipients(badge);
+    setShowRecipientsModal(true);
   };
 
   // QUIZ QUESTIONS CRUD
@@ -1315,17 +1443,17 @@ export default function AdminDashboardPage() {
     return matchesSearch && matchesType && matchesClass;
   });
 
-  const filteredScreeningAttempts = screeningAttempts.filter((a) => {
+  const filteredBadges = badges.filter((b) => {
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
       q === "" ||
-      (a.studentName && a.studentName.toLowerCase().includes(q)) ||
-      (a.className && a.className.toLowerCase().includes(q)) ||
-      (a.quizTitle && a.quizTitle.toLowerCase().includes(q));
+      (b.name && b.name.toLowerCase().includes(q)) ||
+      (b.description && b.description.toLowerCase().includes(q)) ||
+      (b.module_title && b.module_title.toLowerCase().includes(q)) ||
+      (b.subject_name && b.subject_name.toLowerCase().includes(q));
 
-    const selectedClassName = classes.find((c) => String(c.id) === filterClassId)?.name;
-    const matchesClass = filterClassId === "all" || a.className === selectedClassName;
-    return matchesSearch && matchesClass;
+    const matchesSubject = filterBadgeSubject === "all" || (b.subject_id && b.subject_id.toString() === filterBadgeSubject);
+    return matchesSearch && matchesSubject;
   });
 
   const renderSearchFilterBar = () => {
@@ -1357,6 +1485,8 @@ export default function AdminDashboardPage() {
                 ? "Cari judul modul atau mata pelajaran..."
                 : activeTab === "quizzes"
                 ? "Cari judul kuis atau nama modul..."
+                : activeTab === "badges"
+                ? "Cari nama badge, deskripsi, atau modul..."
                 : "Cari nama siswa, kelas, atau judul kuis..."
             }
             className="w-full rounded-xl border border-zinc-200 bg-white pl-9 pr-8 py-2 text-xs font-semibold text-zinc-800 focus:border-[#5A77DF] focus:ring-2 focus:ring-[#5A77DF]/20 transition-all outline-hidden"
@@ -1430,8 +1560,24 @@ export default function AdminDashboardPage() {
             </select>
           )}
 
+          {/* Badge Subject Filter */}
+          {activeTab === "badges" && (
+            <select
+              value={filterBadgeSubject}
+              onChange={(e) => setFilterBadgeSubject(e.target.value)}
+              className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-semibold text-zinc-800 outline-hidden"
+            >
+              <option value="all">Semua Mata Pelajaran</option>
+              {subjects.map((s) => (
+                <option key={s.id} value={String(s.id)}>
+                  {s.name} {s.class ? `(${s.class.name})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* Reset Filters Button */}
-          {(searchQuery !== "" || filterRole !== "all" || filterTeacherType !== "all" || filterClassId !== "all" || filterQuizType !== "all") && (
+          {(searchQuery !== "" || filterRole !== "all" || filterTeacherType !== "all" || filterClassId !== "all" || filterQuizType !== "all" || filterBadgeSubject !== "all") && (
             <button
               onClick={() => {
                 setSearchQuery("");
@@ -1439,6 +1585,7 @@ export default function AdminDashboardPage() {
                 setFilterTeacherType("all");
                 setFilterClassId("all");
                 setFilterQuizType("all");
+                setFilterBadgeSubject("all");
               }}
               className="rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 px-3 py-2 text-2xs font-extrabold text-red-600 transition cursor-pointer flex items-center gap-1.5"
             >
@@ -1572,9 +1719,9 @@ export default function AdminDashboardPage() {
                   { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
                   { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
                   { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
+                  { id: "badges", label: "Badge Penghargaan", icon: <Award className="w-4 h-4" /> },
                   { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
                   { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
-                  { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
                 ].map((item) => {
                   const isActive = activeTab === item.id;
                   return (
@@ -1636,9 +1783,9 @@ export default function AdminDashboardPage() {
                 { id: "subjects", label: "Mata Pelajaran", icon: <BookOpen className="w-4 h-4" /> },
                 { id: "modules", label: "Modul Pembelajaran", icon: <FileCode className="w-4 h-4" /> },
                 { id: "quizzes", label: "Kuis & Soal", icon: <HelpCircle className="w-4 h-4" /> },
+                { id: "badges", label: "Badge Penghargaan", icon: <Award className="w-4 h-4" /> },
                 { id: "pretest_screening", label: "Pretest Screening Mental", icon: <Brain className="w-4 h-4" /> },
                 { id: "attempts", label: "Hasil Kuis Siswa", icon: <Target className="w-4 h-4" /> },
-                { id: "screening", label: "Hasil Screening SRQ-29", icon: <FileText className="w-4 h-4" /> },
               ].map((item) => {
                 const isActive = activeTab === item.id;
                 return (
@@ -1672,9 +1819,9 @@ export default function AdminDashboardPage() {
             { id: "subjects", label: "Mapel", icon: <BookOpen className="w-4 h-4" /> },
             { id: "modules", label: "Modul", icon: <FileCode className="w-4 h-4" /> },
             { id: "quizzes", label: "Kuis", icon: <HelpCircle className="w-4 h-4" /> },
+            { id: "badges", label: "Badge", icon: <Award className="w-4 h-4" /> },
             { id: "pretest_screening", label: "Pretest SRQ", icon: <Brain className="w-4 h-4" /> },
             { id: "attempts", label: "Hasil Kuis", icon: <Target className="w-4 h-4" /> },
-            { id: "screening", label: "Hasil SRQ-29", icon: <FileText className="w-4 h-4" /> },
           ].map((item) => {
             const isActive = activeTab === item.id;
             return (
@@ -1715,10 +1862,11 @@ export default function AdminDashboardPage() {
                   <div className="space-y-6 animate-fadeIn">
                     
                     {/* Metrics row */}
-                    <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+                    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
                       {[
                         { label: "Total Modul", value: summary.modules, icon: <BookOpen className="w-4 h-4 text-[#5A77DF]" />, color: "text-[#5A77DF]" },
                         { label: "Total Kuis", value: summary.quizzes, icon: <FileText className="w-4 h-4 text-cyan-500" />, color: "text-cyan-500" },
+                        { label: "Total Badge", value: (summary as any).badges || badges.length, icon: <Award className="w-4 h-4 text-purple-600" />, color: "text-purple-600" },
                         { label: "Total Akun", value: summary.users, icon: <Users className="w-4 h-4 text-emerald-500" />, color: "text-emerald-500" },
                         { label: "Jurnal Terisi", value: summary.journals, icon: <Brain className="w-4 h-4 text-amber-500" />, color: "text-amber-500" },
                       ].map((item) => (
@@ -1906,6 +2054,11 @@ export default function AdminDashboardPage() {
                                         <HelpCircle className="w-3 h-3" /> Kuis
                                       </span>
                                     )}
+                                    {permsList.includes("manage_badges") && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-purple-50 px-2 py-0.5 text-3xs font-extrabold text-purple-700 border border-purple-200">
+                                        <Award className="w-3 h-3" /> Badge
+                                      </span>
+                                    )}
                                     {permsList.includes("manage_pretest_screening") && (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-2 py-0.5 text-3xs font-extrabold text-violet-700 border border-violet-200">
                                         <Brain className="w-3 h-3" /> Pretest SRQ
@@ -1914,11 +2067,6 @@ export default function AdminDashboardPage() {
                                     {permsList.includes("manage_attempts") && (
                                       <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-3xs font-extrabold text-teal-700 border border-teal-200">
                                         <Target className="w-3 h-3" /> Hasil Kuis
-                                      </span>
-                                    )}
-                                    {permsList.includes("manage_screening") && (
-                                      <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-3xs font-extrabold text-rose-700 border border-rose-200">
-                                        <FileText className="w-3 h-3" /> Hasil SRQ-29
                                       </span>
                                     )}
                                     {permsList.includes("manage_academics") && (
@@ -2325,6 +2473,137 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
+                {/* 6.1 BADGES VIEW */}
+                {activeTab === "badges" && (
+                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn w-full max-w-full min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Award className="w-5 h-5 text-[#5A77DF]" />
+                          <h3 className="text-sm font-extrabold text-zinc-800">Manajemen Lencana & Badge Belajar</h3>
+                          <span className="inline-flex items-center rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/25 px-2.5 py-0.5 text-3xs font-extrabold text-[#3E53A2]">
+                            Total: {badges.length}
+                          </span>
+                        </div>
+                        <p className="text-2xs text-zinc-500">
+                          Kelola lencana apresiasi dan penghargaan pencapaian modul belajar yang dapat diraih siswa di seluruh sekolah.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2.5 shrink-0">
+                        <button
+                          onClick={handleOpenBadgeCreate}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-2xs font-bold text-white transition-all cursor-pointer shadow-sm shrink-0"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Tambah Badge</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {renderSearchFilterBar()}
+
+                    <div className="overflow-x-auto rounded-xl border border-zinc-150 custom-scrollbar w-full">
+                      <table className="w-full min-w-[700px] text-left text-xs divide-y divide-zinc-150">
+                        <thead className="bg-[#f5f7fc]">
+                          <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                            <th className="px-3 py-3 w-12 text-center">No</th>
+                            <th className="px-3 py-3 min-w-[170px]">Badge & Emblem</th>
+                            <th className="px-3 py-3 min-w-[180px]">Deskripsi Pencapaian</th>
+                            <th className="px-3 py-3 min-w-[180px]">Target Modul / Keterkaitan</th>
+                            <th className="px-3 py-3 text-center min-w-[130px]">Siswa Peraih</th>
+                            <th className="px-3 py-3 text-right w-24">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100 bg-white">
+                          {filteredBadges.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-8 text-center text-xs text-zinc-400 italic">
+                                {badges.length === 0 ? "Belum ada badge yang ditambahkan." : "Tidak ada badge yang cocok dengan pencarian / filter Anda."}
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredBadges.map((b, idx) => (
+                              <tr key={b.id} className="hover:bg-zinc-50 transition-colors">
+                                <td className="px-3 py-3.5 text-zinc-400 font-bold text-center text-2xs">{idx + 1}</td>
+                                <td className="px-3 py-3.5">
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-lg shadow-2xs overflow-hidden">
+                                      {b.image_url?.startsWith("/") || b.image_url?.startsWith("http") ? (
+                                        <img src={b.image_url} alt={b.name} className="h-full w-full object-cover p-0.5" />
+                                      ) : (
+                                        <span>{b.image_url || "🏆"}</span>
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-extrabold text-zinc-900 text-xs truncate" title={b.name}>{b.name}</div>
+                                      {b.subject_name && (
+                                        <span className="text-3xs font-mono font-extrabold text-[#3E53A2] bg-[#5A77DF]/10 px-2 py-0.5 rounded border border-[#5A77DF]/20 uppercase inline-block mt-0.5 truncate max-w-[140px]" title={b.subject_name}>
+                                          {b.subject_name}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-3.5 text-zinc-600 text-2xs max-w-[200px]">
+                                  <p className="line-clamp-2 leading-relaxed" title={b.description || ""}>
+                                    {b.description || "-"}
+                                  </p>
+                                </td>
+                                <td className="px-3 py-3.5 max-w-[200px]">
+                                  {b.module_title && b.module_title !== "-" ? (
+                                    <div
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#5A77DF]/25 bg-[#5A77DF]/10 font-bold text-[#3E53A2] text-2xs max-w-full"
+                                      title={b.module_title}
+                                    >
+                                      <BookOpen className="w-3 h-3 text-[#5A77DF] shrink-0" />
+                                      <span className="truncate">{b.module_title}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-zinc-200 bg-zinc-50 font-bold text-zinc-500 text-2xs">
+                                      Umum / Bebas Modul
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-3.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRecipients(b)}
+                                    className="inline-flex items-center gap-1.5 text-2xs font-extrabold text-[#3E53A2] hover:text-[#5A77DF] bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 px-2.5 py-1.5 rounded-xl border border-[#5A77DF]/30 transition cursor-pointer shadow-2xs whitespace-nowrap"
+                                    title="Lihat daftar siswa penerima badge ini"
+                                  >
+                                    <Users className="w-3.5 h-3.5 text-[#5A77DF]" />
+                                    <span>{b.recipients_count || 0} Siswa</span>
+                                  </button>
+                                </td>
+                                <td className="px-3 py-3.5 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenBadgeEdit(b)}
+                                      title="Edit Badge"
+                                      className="p-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-amber-700 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBadgeDelete(b.id)}
+                                      title="Hapus Badge"
+                                      className="p-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer shadow-2xs inline-flex items-center justify-center"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 {/* 6.5 PRETEST SCREENING MENTAL HEALTH (SRQ-29) VIEW */}
                 {activeTab === "pretest_screening" && (() => {
                   const srqQuiz = quizzes.find((q) => q.type === "pretest" && (!q.module_id || q.title?.toLowerCase().includes("srq") || q.title?.toLowerCase().includes("screening")));
@@ -2552,70 +2831,7 @@ export default function AdminDashboardPage() {
                   </div>
                 )}
 
-                {/* 9. SCREENING SRQ-29 VIEW */}
-                {activeTab === "screening" && (
-                  <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 animate-fadeIn">
-                    <div className="border-b border-zinc-100 pb-3">
-                      <h3 className="text-sm font-extrabold text-zinc-800 flex items-center gap-2">
-                        <Brain className="w-4 h-4 text-[#5A77DF]" />
-                        <span>Riwayat Jawaban Screening SRQ-29 Siswa (Bulanan)</span>
-                      </h3>
-                      <p className="text-3xs text-zinc-400">
-                        Pantau detail jawaban screening kesehatan mental SRQ-29 yang diisi oleh siswa tiap bulan.
-                      </p>
-                    </div>
-
-                    {renderSearchFilterBar()}
-
-                    <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                      <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
-                        <thead className="bg-[#f5f7fc]">
-                          <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
-                            <th className="px-4 py-3">Nama Siswa</th>
-                            <th className="px-4 py-3">Kelas</th>
-                            <th className="px-4 py-3">Screening</th>
-                            <th className="px-4 py-3">Skor SRQ-29</th>
-                            <th className="px-4 py-3">Tanggal Selesai</th>
-                            <th className="px-4 py-3 text-right">Detail</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-100 bg-white">
-                          {filteredScreeningAttempts.length === 0 ? (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-8 text-center text-xs text-zinc-400 italic">
-                                Belum ada riwayat jawaban screening SRQ-29.
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredScreeningAttempts.map((attempt) => (
-                              <tr key={attempt.id} className="hover:bg-zinc-50">
-                                <td className="px-4 py-3.5 font-bold text-zinc-800">{attempt.studentName}</td>
-                                <td className="px-4 py-3.5 text-zinc-500 font-semibold">{attempt.className}</td>
-                                <td className="px-4 py-3.5 text-zinc-700 font-medium">{attempt.quizTitle}</td>
-                                <td className="px-4 py-3.5 text-[#5A77DF] font-extrabold text-sm">{attempt.score}/29</td>
-                                <td className="px-4 py-3.5 text-zinc-500">{attempt.completedAt}</td>
-                                <td className="px-4 py-3.5 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedAttempt(attempt);
-                                      setShowAttemptDetailModal(true);
-                                    }}
-                                    title="Lihat Detail Jawaban Screening"
-                                    className="rounded-xl border border-[#5A77DF]/30 bg-[#5A77DF]/10 hover:bg-[#5A77DF]/20 p-2 text-[#5A77DF] transition cursor-pointer inline-flex items-center justify-center shadow-2xs"
-                                  >
-                                    <Eye className="w-4 h-4 text-[#5A77DF]" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </>
+                </>
             )}
           </div>
         </main>
@@ -3413,103 +3629,75 @@ export default function AdminDashboardPage() {
 
       {/* 8. ATTEMPT ANSWERS DETAIL POPUP */}
       {showAttemptDetailModal && selectedAttempt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => setShowAttemptDetailModal(false)}
-              title="Tutup Modal"
-              className="absolute right-4 top-4 p-2 rounded-xl text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="border-b border-zinc-150 pb-3 mb-4 pr-8">
-              <h3 className="text-base font-extrabold text-zinc-800">
-                Lembar Jawaban: {selectedAttempt.studentName}
-              </h3>
-              <p className="text-3xs text-zinc-400">
-                Hasil pengerjaan kuis: <span className="font-bold text-zinc-700">{selectedAttempt.quizTitle}</span> • Kelas: {selectedAttempt.className}
-              </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-zinc-900">
+                  Detail Jawaban Kuis Siswa
+                </h3>
+                <p className="text-2xs text-zinc-500 font-medium">
+                  {selectedAttempt.studentName} ({selectedAttempt.className})
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAttemptDetailModal(false)}
+                className="rounded-xl border border-zinc-200 p-2 text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {(() => {
-              const isScreening =
-                selectedAttempt?.quizType === "SCREENING" ||
-                (selectedAttempt?.quizTitle &&
-                  (selectedAttempt.quizTitle.toLowerCase().includes("srq") ||
-                    selectedAttempt.quizTitle.toLowerCase().includes("screening")));
-
-              return (
-                <>
-                  <div className="space-y-4 text-left max-h-[55vh] overflow-y-auto pr-1">
-                    {selectedAttempt.answers && selectedAttempt.answers.length > 0 ? (
-                      selectedAttempt.answers.map((ans: any, idx: number) => (
-                        <div key={idx} className="p-3 rounded-xl border border-zinc-150 bg-zinc-50/50 space-y-1.5">
-                          <h4 className="text-xs font-bold text-zinc-800">
-                            Soal {idx + 1}: {ans.question}
-                          </h4>
-                          <div className="flex items-center gap-2 pt-1 text-2xs">
-                            <span className="font-semibold text-zinc-500">Jawaban siswa:</span>
-                            {isScreening ? (
-                              <span className="font-extrabold px-2.5 py-0.5 rounded-lg border border-[#5A77DF]/30 bg-[#5A77DF]/10 text-[#3E53A2]">
-                                {ans.selectedOption}
-                              </span>
-                            ) : (
-                              <>
-                                <span
-                                  className={`font-bold px-2 py-0.5 rounded-lg border ${
-                                    ans.isCorrect
-                                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                      : "bg-rose-50 border-rose-200 text-rose-700"
-                                  }`}
-                                >
-                                  {ans.selectedOption}
-                                </span>
-                                {ans.isCorrect ? (
-                                  <span className="inline-flex items-center gap-1 text-3xs font-extrabold text-emerald-700">
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>Benar</span>
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-3xs font-extrabold text-rose-700">
-                                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>Salah</span>
-                                  </span>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-12 text-2xs text-zinc-400 italic">
-                        Tidak ada rekaman jawaban detail untuk attempt ini.
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-6 pt-3 border-t border-zinc-100 flex items-center justify-between">
-                    {!isScreening ? (
-                      <span className="text-xs font-bold text-[#5A77DF]">
-                        Skor Hasil: {selectedAttempt.score} / 100
+            <div className="space-y-4 text-left max-h-[55vh] overflow-y-auto pr-1">
+              {selectedAttempt.answers && selectedAttempt.answers.length > 0 ? (
+                selectedAttempt.answers.map((ans: any, idx: number) => (
+                  <div key={idx} className="p-3 rounded-xl border border-zinc-150 bg-zinc-50/50 space-y-1.5">
+                    <h4 className="text-xs font-bold text-zinc-800">
+                      Soal {idx + 1}: {ans.question}
+                    </h4>
+                    <div className="flex items-center gap-2 pt-1 text-2xs">
+                      <span className="font-semibold text-zinc-500">Jawaban siswa:</span>
+                      <span
+                        className={`font-bold px-2 py-0.5 rounded-lg border ${
+                          ans.isCorrect
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                            : "bg-rose-50 border-rose-200 text-rose-700"
+                        }`}
+                      >
+                        {ans.selectedOption}
                       </span>
-                    ) : (
-                      <span className="text-xs font-bold text-[#5A77DF] flex items-center gap-1.5">
-                        <Brain className="w-4 h-4 text-[#5A77DF]" />
-                        <span>Skor SRQ-29: {selectedAttempt.score} / 29</span>
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowAttemptDetailModal(false)}
-                      className="rounded-xl border border-zinc-200 hover:bg-zinc-50 px-5 py-2.5 text-2xs font-bold text-zinc-600 transition cursor-pointer"
-                    >
-                      Tutup
-                    </button>
+                      {ans.isCorrect ? (
+                        <span className="inline-flex items-center gap-1 text-3xs font-extrabold text-emerald-700">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Benar</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-3xs font-extrabold text-rose-700">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Salah</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </>
-              );
-            })()}
+                ))
+              ) : (
+                <div className="text-center py-12 text-2xs text-zinc-400 italic">
+                  Tidak ada rekaman jawaban detail untuk attempt ini.
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 pt-3 border-t border-zinc-100 flex items-center justify-between">
+              <span className="text-xs font-bold text-[#5A77DF]">Skor Hasil: {selectedAttempt.score} / 100</span>
+              <button
+                type="button"
+                onClick={() => setShowAttemptDetailModal(false)}
+                className="rounded-xl border border-zinc-200 hover:bg-zinc-50 px-5 py-2.5 text-2xs font-bold text-zinc-600 transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3869,6 +4057,230 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 10. BADGE CREATE / EDIT MODAL */}
+      {showBadgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-[#5A77DF]" />
+                <h3 className="text-base font-extrabold text-zinc-800">
+                  {selectedBadge ? "Edit Badge Penghargaan" : "Tambah Badge Penghargaan Baru"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBadgeModal(false)}
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleBadgeSubmit} className="space-y-4 text-left">
+              {/* Nama Badge */}
+              <div className="space-y-1">
+                <label className="text-2xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                  Nama Badge / Lencana *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Pakar SPLDV, Master Matriks, Juara Literasi Digital"
+                  value={bName}
+                  onChange={(e) => setBName(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
+                />
+              </div>
+
+              {/* Target Modul Pelajaran */}
+              <div className="space-y-1">
+                <label className="text-2xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                  Target Modul Pembelajaran (Opsional)
+                </label>
+                <select
+                  value={bModuleId}
+                  onChange={(e) => setBModuleId(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 text-xs text-zinc-900 outline-none focus:border-[#5A77DF] focus:bg-white font-semibold cursor-pointer"
+                >
+                  <option value="">-- Umum / Tanpa Keterikatan Modul Khusus --</option>
+                  {modules.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.subject ? `[${m.subject}] ` : ""}{m.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-3xs text-zinc-400 font-medium">
+                  Boleh dikosongkan untuk badge umum. Jika modul dipilih, siswa yang menyelesaikan modul akan otomatis meraih badge ini.
+                </p>
+              </div>
+
+              {/* Deskripsi */}
+              <div className="space-y-1">
+                <label className="text-2xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">
+                  Deskripsi Pencapaian
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Diberikan atas keberhasilan menuntaskan seluruh materi dan kuis modul ini..."
+                  value={bDescription}
+                  onChange={(e) => setBDescription(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:border-[#5A77DF] focus:bg-white font-medium"
+                />
+              </div>
+
+              {/* Icon / Image Upload / Emoji Selection */}
+              <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4">
+                <label className="text-2xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono block">
+                  Gambar Icon / Logo Badge *
+                </label>
+                <div className="flex items-center gap-4">
+                  {/* Live Preview */}
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#5A77DF]/30 bg-white text-2xl shadow-xs overflow-hidden">
+                    {bImageUrl?.startsWith("/") || bImageUrl?.startsWith("http") ? (
+                      <img src={bImageUrl} alt="Preview Badge" className="h-full w-full object-cover p-1" />
+                    ) : (
+                      <span>{bImageUrl || "🏆"}</span>
+                    )}
+                  </div>
+
+                  {/* Upload button */}
+                  <div className="flex-1 space-y-1">
+                    <label className="inline-flex items-center gap-2 rounded-xl border border-[#5A77DF]/30 bg-white hover:bg-[#5A77DF]/10 px-4 py-2 text-xs font-extrabold text-[#3E53A2] transition cursor-pointer shadow-xs">
+                      <Upload className="w-4 h-4 text-[#5A77DF]" />
+                      <span>{uploadingBadgeImage ? "Mengunggah..." : "Unggah Gambar Custom"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={uploadingBadgeImage}
+                        onChange={handleUploadBadgeImage}
+                        className="hidden"
+                      />
+                    </label>
+                    <p className="text-3xs text-zinc-500 font-medium">Format: PNG, JPG, GIF, WebP (Maks 50MB)</p>
+                  </div>
+                </div>
+
+                {/* Preset Emoji Picker */}
+                <div className="pt-2 border-t border-zinc-200/80">
+                  <span className="text-3xs font-mono text-zinc-500 font-bold uppercase block mb-1.5">
+                    Atau Pilih Preset Emoji:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {["🏆", "⭐", "🥇", "🎖️", "🚀", "💡", "🧠", "🎯", "👑", "🔥", "💎", "🎓"].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setBImageUrl(emoji)}
+                        className={`h-9 w-9 rounded-xl border text-base flex items-center justify-center transition cursor-pointer ${
+                          bImageUrl === emoji
+                            ? "border-[#5A77DF] bg-[#5A77DF]/10 scale-105 shadow-xs"
+                            : "border-zinc-200 bg-white hover:bg-zinc-100"
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setShowBadgeModal(false)}
+                  className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-600 transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingBadge}
+                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-5 py-2 text-xs font-extrabold text-white transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  {submittingBadge ? "Menyimpan..." : selectedBadge ? "Perbarui Badge" : "Simpan Badge Baru"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 11. BADGE RECIPIENTS MODAL */}
+      {showRecipientsModal && selectedBadgeRecipients && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+          <div className="w-full max-w-2xl rounded-2xl border border-zinc-200 bg-white p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-2xl overflow-hidden">
+                  {selectedBadgeRecipients.image_url?.startsWith("/") || selectedBadgeRecipients.image_url?.startsWith("http") ? (
+                    <img src={selectedBadgeRecipients.image_url} alt="Badge" className="h-full w-full object-cover p-1" />
+                  ) : (
+                    <span>{selectedBadgeRecipients.image_url || "🏆"}</span>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-zinc-900 leading-tight">
+                    Siswa Peraih: {selectedBadgeRecipients.name}
+                  </h3>
+                  <p className="text-2xs text-zinc-500 mt-0.5">
+                    Modul: {selectedBadgeRecipients.module_title} • Total: {selectedBadgeRecipients.recipients_count || 0} Siswa
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecipientsModal(false)}
+                className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {(!selectedBadgeRecipients.recipients || selectedBadgeRecipients.recipients.length === 0) ? (
+              <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 p-8 text-center text-xs text-zinc-500 italic">
+                Belum ada siswa yang berhasil meraih badge ini.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-zinc-150">
+                <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
+                  <thead className="bg-[#f5f7fc]">
+                    <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="px-4 py-2.5">No</th>
+                      <th className="px-4 py-2.5">Nama Siswa</th>
+                      <th className="px-4 py-2.5">NIS</th>
+                      <th className="px-4 py-2.5">Kelas</th>
+                      <th className="px-4 py-2.5">Tanggal Perolehan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 bg-white">
+                    {selectedBadgeRecipients.recipients.map((rec: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-zinc-50">
+                        <td className="px-4 py-3 text-zinc-400 font-bold">{idx + 1}</td>
+                        <td className="px-4 py-3 font-bold text-zinc-900">{rec.student_name}</td>
+                        <td className="px-4 py-3 text-zinc-600 font-mono">{rec.nis || "-"}</td>
+                        <td className="px-4 py-3 text-[#3E53A2] font-semibold">{rec.className}</td>
+                        <td className="px-4 py-3 text-zinc-500 font-mono text-2xs">{rec.awarded_at}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRecipientsModal(false)}
+                className="rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-600 transition cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

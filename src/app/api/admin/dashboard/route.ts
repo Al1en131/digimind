@@ -35,7 +35,8 @@ export async function GET() {
       classes,
       subjects,
       teachers,
-      quizAttempts
+      quizAttempts,
+      badges
     ] = await Promise.all([
       prisma.module.findMany({
         where: { subject_id: { not: null } },
@@ -92,6 +93,41 @@ export async function GET() {
           answers: { include: { question: true, option: true } }
         },
         orderBy: { completed_at: "desc" }
+      }),
+      prisma.badge.findMany({
+        include: {
+          module: {
+            select: {
+              id: true,
+              title: true,
+              subject: {
+                select: {
+                  id: true,
+                  name: true
+                }
+              }
+            }
+          },
+          student_badges: {
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  name: true,
+                  nis: true,
+                  class: {
+                    select: {
+                      id: true,
+                      name: true,
+                      major: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        orderBy: { created_at: "desc" }
       })
     ]);
 
@@ -136,6 +172,7 @@ export async function GET() {
       quizzes: quizzes.length,
       users: users.length,
       journals: journals.length,
+      badges: badges.length,
       atRisk: progress.filter((item) => item.risk !== "Stabil").length,
     };
 
@@ -157,9 +194,9 @@ export async function GET() {
               "manage_subjects",
               "manage_modules",
               "manage_quizzes",
+              "manage_badges",
               "manage_pretest_screening",
-              "manage_attempts",
-              "manage_screening"
+              "manage_attempts"
             ];
           }
         } catch {
@@ -173,9 +210,9 @@ export async function GET() {
             "manage_subjects",
             "manage_modules",
             "manage_quizzes",
+            "manage_badges",
             "manage_pretest_screening",
-            "manage_attempts",
-            "manage_screening"
+            "manage_attempts"
           ];
         }
 
@@ -277,48 +314,33 @@ export async function GET() {
           isCorrect: !!ans.option?.is_correct
         }))
       })),
-      screeningAttempts: quizAttempts
-        .filter((a) => {
-          const titleLower = (a.quiz?.title || "").toLowerCase();
-          return (
-            a.quiz?.type === "pretest" &&
-            (!a.quiz?.subject_id || titleLower.includes("srq") || titleLower.includes("screening") || titleLower.includes("mental"))
-          );
-        })
-        .map((attempt) => {
-          const yesCountFromAnswers = attempt.answers.filter((ans) =>
-            ans.option?.option_text?.toUpperCase().includes("Y")
-          ).length;
-          const displayScore =
-            attempt.score === 100 && yesCountFromAnswers <= 29
-              ? yesCountFromAnswers
-              : attempt.score ?? yesCountFromAnswers;
-
-          return {
-            id: attempt.id,
-            studentName: attempt.student?.name || "-",
-            className: attempt.student?.class
-              ? (attempt.student.class.major ? `${attempt.student.class.name} ${attempt.student.class.major}` : attempt.student.class.name)
-              : "-",
-            quizTitle: attempt.quiz?.title || "Self Reporting Questionnaire - 29 (SRQ-29)",
-            quizType: "SCREENING",
-            score: displayScore,
-            completedAt: attempt.completed_at
-              ? new Date(attempt.completed_at).toLocaleDateString("id-ID", {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "-",
-            answers: attempt.answers.map((ans) => ({
-              question: ans.question?.question || "-",
-              selectedOption: ans.option?.option_text || "-",
-              isCorrect: !!ans.option?.is_correct,
-            })),
-          };
-        })
+      badges: badges.map((b) => ({
+        id: b.id,
+        name: b.name,
+        description: b.description || "",
+        image_url: b.image_url || "🏆",
+        module_id: b.module_id,
+        module_title: b.module?.title || "-",
+        subject_name: b.module?.subject?.name || "-",
+        subject_id: b.module?.subject?.id || null,
+        created_at: b.created_at,
+        recipients_count: b.student_badges.length,
+        recipients: b.student_badges.map((sb) => ({
+          student_id: sb.student.id,
+          student_name: sb.student.name,
+          nis: sb.student.nis,
+          className: sb.student.class
+            ? (sb.student.class.major ? `${sb.student.class.name} ${sb.student.class.major}` : sb.student.class.name)
+            : "-",
+          awarded_at: sb.awarded_at ? new Date(sb.awarded_at).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }) : "-",
+        })),
+      }))
     });
   } catch (error: any) {
     return NextResponse.json(
@@ -885,6 +907,119 @@ export async function POST(request: Request) {
 
         await prisma.user.delete({ where: { id: userId } });
         return NextResponse.json({ success: true, message: "Aktor Admin berhasil dihapus!" });
+      }
+    }
+
+    // CRUD: BADGE
+    if (entity === "badge") {
+      if (action === "create") {
+        const { name, description, image_url, module_id } = data;
+        if (!name || !name.trim()) {
+          return NextResponse.json({ success: false, message: "Nama badge wajib diisi." }, { status: 400 });
+        }
+        const moduleIdInt = module_id && String(module_id).trim() !== "" ? parseInt(module_id) : null;
+        const newBadge = await prisma.badge.create({
+          data: {
+            name: name.trim(),
+            description: description ? description.trim() : "",
+            image_url: image_url || "🏆",
+            module_id: moduleIdInt,
+          }
+        });
+
+        // Auto-award newly created badge to students who already completed this module (if module is linked)
+        if (moduleIdInt) {
+          try {
+            const completedProgresses = await prisma.completedModule.findMany({
+              where: { module_id: moduleIdInt },
+              select: { student_id: true }
+            });
+
+            if (completedProgresses.length > 0) {
+              for (const cp of completedProgresses) {
+                const existing = await prisma.studentBadge.findFirst({
+                  where: {
+                    student_id: cp.student_id,
+                    badge_id: newBadge.id
+                  }
+                });
+                if (!existing) {
+                  await prisma.studentBadge.create({
+                    data: {
+                      student_id: cp.student_id,
+                      badge_id: newBadge.id
+                    }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Auto-award badge error on admin create:", err);
+          }
+        }
+
+        return NextResponse.json({ success: true, message: "Badge penghargaan berhasil dibuat!", badge: newBadge });
+      }
+
+      if (action === "update") {
+        const { id, name, description, image_url, module_id } = data;
+        if (!id || !name || !name.trim()) {
+          return NextResponse.json({ success: false, message: "ID dan Nama badge wajib diisi." }, { status: 400 });
+        }
+        const badgeIdInt = parseInt(id);
+        const moduleIdInt = module_id && String(module_id).trim() !== "" ? parseInt(module_id) : null;
+
+        const updatedBadge = await prisma.badge.update({
+          where: { id: badgeIdInt },
+          data: {
+            name: name.trim(),
+            description: description ? description.trim() : "",
+            image_url: image_url || "🏆",
+            module_id: moduleIdInt,
+          }
+        });
+
+        // Auto-award updated badge to students who already completed this module (if module is linked)
+        if (moduleIdInt) {
+          try {
+            const completedProgresses = await prisma.completedModule.findMany({
+              where: { module_id: moduleIdInt },
+              select: { student_id: true }
+            });
+
+            if (completedProgresses.length > 0) {
+              for (const cp of completedProgresses) {
+                const existing = await prisma.studentBadge.findFirst({
+                  where: {
+                    student_id: cp.student_id,
+                    badge_id: updatedBadge.id
+                  }
+                });
+                if (!existing) {
+                  await prisma.studentBadge.create({
+                    data: {
+                      student_id: cp.student_id,
+                      badge_id: updatedBadge.id
+                    }
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Auto-award badge error on admin update:", err);
+          }
+        }
+
+        return NextResponse.json({ success: true, message: "Badge penghargaan berhasil diperbarui!", badge: updatedBadge });
+      }
+
+      if (action === "delete") {
+        const badgeIdInt = parseInt(data.id);
+        await prisma.$transaction(async (tx) => {
+          await tx.studentBadge.deleteMany({ where: { badge_id: badgeIdInt } });
+          await tx.badge.delete({ where: { id: badgeIdInt } });
+        });
+        return NextResponse.json({ success: true, message: "Badge penghargaan berhasil dihapus!" });
       }
     }
 

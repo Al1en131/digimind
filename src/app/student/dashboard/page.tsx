@@ -1967,7 +1967,7 @@ export default function StudentDashboard() {
                       <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-4 shadow-sm space-y-2.5 shrink-0">
                         <div className="flex items-center justify-between">
                           <span className="text-3xs font-extrabold uppercase tracking-wider text-[#5A77DF] font-mono">Status Mental Siswa</span>
-                          <span className="text-3xs text-zinc-400 font-mono font-bold">Kondisi Terkini</span>
+                          {/* <span className="text-3xs text-zinc-400 font-mono font-bold">Kondisi Terkini</span> */}
                         </div>
                         
                         {/* Status Badge */}
@@ -1980,13 +1980,6 @@ export default function StudentDashboard() {
                             ? "bg-emerald-50/80 border-emerald-200/80 text-emerald-700"
                             : "bg-[#5A77DF]/10 border-[#5A77DF]/20 text-[#3E53A2]"
                         }`}>
-                          {student.mental_level?.toLowerCase().includes("perlu pendampingan") ? (
-                            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                          ) : student.mental_level?.toLowerCase().includes("sudah pendampingan") ? (
-                            <UserCheck className="w-4 h-4 text-amber-600 shrink-0" />
-                          ) : (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          )}
                           <span className="text-xs font-black uppercase tracking-wide">
                             {student.mental_level || "Belum Ada Data"}
                           </span>
@@ -2258,7 +2251,7 @@ export default function StudentDashboard() {
                       <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-5 shadow-sm space-y-4 flex-1 flex flex-col justify-between">
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
-                            <span className={`text-3xs px-2.5 py-0.5 rounded-full font-extrabold uppercase border ${
+                            <span className={`text-base px-2.5 py-0.5 rounded-full font-extrabold uppercase border ${
                               data?.monthlyScreening?.isCompletedThisMonth
                                 ? "bg-[#5A77DF]/10 text-[#3E53A2] border-[#5A77DF]/30"
                                 : "bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse"
@@ -2672,8 +2665,8 @@ export default function StudentDashboard() {
                         Belum ada data riwayat screening bulanan yang tersimpan.
                       </p>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
+                      <div className="overflow-x-auto rounded-xl border border-zinc-200">
+                        <table className="min-w-full text-left text-xs whitespace-nowrap divide-y divide-zinc-200">
                           <thead>
                             <tr className="border-b border-zinc-200 text-3xs uppercase tracking-wider text-[#5A77DF] font-mono font-black">
                               <th className="py-3 px-4">Periode</th>

@@ -5,6 +5,8 @@
   --foreground: #171717;
   --primary: #5A77DF;
   --secondary: #3E53A2;
+  --font-poppins: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-roboto: 'Roboto', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @theme inline {

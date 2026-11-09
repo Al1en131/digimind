@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get("session_token")?.value;
     const decoded = sessionToken ? verifyJWT(sessionToken) : null;
-
+    
     if (!decoded) {
       return NextResponse.json(
         { success: false, message: "Akses ditolak. Silakan login kembali." },

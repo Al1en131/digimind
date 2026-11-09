@@ -57,35 +57,22 @@ export async function POST(request: Request) {
 
     // 3. Process Quiz Attempt
     const result = await prisma.$transaction(async (tx) => {
-      const attempt = await tx.quizAttempt.create({
-        data: {
-          student_id: student.id,
-          quiz_id: quiz.id,
-          score: 0,
-        }
-      });
-
       // Fetch all valid option IDs for this quiz questions to verify foreign keys
       const validOptionIds = new Set(
         quiz.questions.flatMap(q => q.options.map(o => o.id))
       );
 
-      // Save answer records safely
+      const answersToCreate: Array<{ question_id: number; option_id: number }> = [];
       for (const ans of answers) {
         const optId = parseInt(ans.optionId);
         const qId = parseInt(ans.questionId);
 
-        if (!optId || !validOptionIds.has(optId)) continue;
-
-        await tx.answer.create({
-          data: {
-            attempt_id: attempt.id,
+        if (optId && validOptionIds.has(optId)) {
+          answersToCreate.push({
             question_id: qId,
             option_id: optId,
-          }
-        }).catch((err) => {
-          console.warn("Skipping invalid answer record:", err.message);
-        });
+          });
+        }
       }
 
       // CASE A: INITIAL PRETEST SRQ-29
@@ -130,12 +117,16 @@ export async function POST(request: Request) {
 
         const totalYesCount = yesCount1_20 + (yesQ21 ? 1 : 0) + yesCount22_24 + yesCount25_29;
 
-        await tx.quizAttempt.update({
-          where: { id: attempt.id },
+        await tx.quizAttempt.create({
           data: {
+            student_id: student.id,
+            quiz_id: quiz.id,
             score: totalYesCount,
-            completed_at: new Date()
-          }
+            completed_at: new Date(),
+            answers: {
+              create: answersToCreate,
+            },
+          },
         });
 
         await tx.siswa.update({
@@ -196,12 +187,16 @@ export async function POST(request: Request) {
         if (score >= 75) subjectLevel = "Advanced";
         else if (score >= 45) subjectLevel = "Intermediate";
 
-        await tx.quizAttempt.update({
-          where: { id: attempt.id },
+        await tx.quizAttempt.create({
           data: {
+            student_id: student.id,
+            quiz_id: quiz.id,
             score,
-            completed_at: new Date()
-          }
+            completed_at: new Date(),
+            answers: {
+              create: answersToCreate,
+            },
+          },
         });
 
         await tx.studentSubjectLevel.upsert({
@@ -231,6 +226,18 @@ export async function POST(request: Request) {
           summaryText: `Pretest selesai! Penempatan level Anda pada mata pelajaran ini adalah ${subjectLevel} (${score}%).`
         };
       }
+
+      await tx.quizAttempt.create({
+        data: {
+          student_id: student.id,
+          quiz_id: quiz.id,
+          score: 100,
+          completed_at: new Date(),
+          answers: {
+            create: answersToCreate,
+          },
+        },
+      });
 
       return {
         isSubjectPretest: false,

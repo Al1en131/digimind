@@ -71,35 +71,34 @@ export async function POST(request: Request) {
     const score = Math.round((correctCount / totalQuestions) * 100);
     const passed = score >= 70;
 
-    // Save quiz attempt and answers
-    const attempt = await prisma.quizAttempt.create({
-      data: {
-        student_id: student.id,
-        quiz_id: quizIdInt,
-        score,
-        completed_at: new Date()
-      }
-    });
-
-    // Save individual answer records for each question
+    // Prepare individual answer records for nested creation
+    const answersToCreate: Array<{ question_id: number; option_id: number }> = [];
     for (const q of quizQuestions) {
       const studentAns = answers.find(a => parseInt(a.questionId) === q.id);
       if (studentAns) {
         const optionIdInt = parseInt(studentAns.optionId);
         const validOption = q.options.find(o => o.id === optionIdInt);
         if (validOption) {
-          await prisma.answer.create({
-            data: {
-              attempt_id: attempt.id,
-              question_id: q.id,
-              option_id: validOption.id,
-            }
-          }).catch((err) => {
-            console.warn("Error creating answer record:", err.message);
+          answersToCreate.push({
+            question_id: q.id,
+            option_id: validOption.id,
           });
         }
       }
     }
+
+    // Save quiz attempt and answers in a single operation
+    const attempt = await prisma.quizAttempt.create({
+      data: {
+        student_id: student.id,
+        quiz_id: quizIdInt,
+        score,
+        completed_at: new Date(),
+        answers: {
+          create: answersToCreate,
+        },
+      },
+    });
 
     let progressPercent = student.module_progress;
     let badgeAwarded = null;

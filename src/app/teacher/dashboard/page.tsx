@@ -3086,32 +3086,52 @@ export default function TeacherDashboardPage() {
                                 <div className="space-y-1 bg-black/10 p-2 rounded-xl border border-white/10">
                                   <div className="flex items-center gap-1.5 px-1 py-0.5 text-3xs font-extrabold tracking-wider uppercase text-violet-200">
                                     <BookOpen className="w-3 h-3 text-violet-300" />
-                                    <span>Daftar Modul</span>
+                                    <span>Pilih Mata Pelajaran</span>
                                   </div>
-                                  <div className="space-y-0.5">
-                                    {data.teacher.subjects.map((s) => (
-                                      <button
-                                        key={`mod-subj-${s.id}`}
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedMapelFilterId(s.id);
-                                          setActiveSubjectIdForModule(s.id);
-                                          setActiveView("mapel");
-                                        }}
-                                        className={`flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-3xs font-bold transition cursor-pointer ${
-                                          selectedMapelFilterId === s.id
-                                            ? "bg-white text-[#3E53A2] shadow-2xs font-extrabold"
-                                            : "text-white/85 hover:bg-white/15 hover:text-white"
-                                        }`}
-                                      >
-                                        <span className="truncate">
-                                          {s.name}
-                                        </span>
-                                        <span className="text-4xs font-mono bg-white/20 px-1.5 py-0.5 rounded-md text-white shrink-0">
-                                          {s.classYear ? `TA ${s.classYear}` : "TA 2025/2026"}
-                                        </span>
-                                      </button>
-                                    ))}
+                                  <div className="space-y-1">
+                                    {data.teacher.subjects.map((s) => {
+                                      const isSelected = selectedMapelFilterId === s.id;
+                                      const classTitle = s.className || "";
+                                      const majorTitle = s.classMajor ? `• ${s.classMajor}` : "";
+                                      return (
+                                        <button
+                                          key={`mod-subj-${s.id}`}
+                                          type="button"
+                                          onClick={() => {
+                                            setSelectedMapelFilterId(s.id);
+                                            setActiveSubjectIdForModule(s.id);
+                                            setActiveView("mapel");
+                                          }}
+                                          className={`flex w-full flex-col gap-0.5 px-2.5 py-2 rounded-xl text-left transition cursor-pointer ${
+                                            isSelected
+                                              ? "bg-white text-[#3E53A2] shadow-sm font-extrabold"
+                                              : "text-white/85 hover:bg-white/15 hover:text-white"
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between w-full gap-1">
+                                            <span className="truncate text-xs font-black">
+                                              {s.name}
+                                            </span>
+                                            <span
+                                              className={`text-4xs font-mono px-1.5 py-0.5 rounded-md shrink-0 font-bold ${
+                                                isSelected ? "bg-[#3E53A2]/15 text-[#3E53A2]" : "bg-white/20 text-white"
+                                              }`}
+                                            >
+                                              {s.classYear ? `TA ${s.classYear}` : "TA 2025/2026"}
+                                            </span>
+                                          </div>
+                                          {(classTitle || majorTitle) && (
+                                            <div
+                                              className={`text-[10px] font-mono truncate ${
+                                                isSelected ? "text-zinc-600 font-semibold" : "text-white/75"
+                                              }`}
+                                            >
+                                              {classTitle} {majorTitle}
+                                            </div>
+                                          )}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -4605,35 +4625,36 @@ export default function TeacherDashboardPage() {
 
                   {/* Full-Width Card Table */}
                   <div className="overflow-hidden rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
-                    <table className="min-w-full divide-y divide-zinc-200 text-left text-sm">
-                      <thead className="bg-[#5A77DF]/10 border-b border-[#5A77DF]/20">
-                        <tr>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Siswa & NIS
-                          </th>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Kelas
-                          </th>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono text-center">
-                            Status
-                          </th>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Level
-                          </th>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Progres Belajar
-                          </th>
-                          {/* <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Mood
-                          </th> */}
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
-                            Status Risiko
-                          </th>
-                          <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono text-right">
-                            Aksi
-                          </th>
-                        </tr>
-                      </thead>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-zinc-200 text-left text-xs whitespace-nowrap">
+                        <thead className="bg-[#5A77DF]/10 border-b border-[#5A77DF]/20">
+                          <tr>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono whitespace-nowrap">
+                              Siswa & NIS
+                            </th>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono whitespace-nowrap">
+                              Kelas
+                            </th>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono text-center whitespace-nowrap">
+                              Status
+                            </th>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono whitespace-nowrap">
+                              Level
+                            </th>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono whitespace-nowrap">
+                              Progres Belajar
+                            </th>
+                            {/* <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
+                              Mood
+                            </th> */}
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono whitespace-nowrap">
+                              Status Risiko
+                            </th>
+                            <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono text-right whitespace-nowrap">
+                              Aksi
+                            </th>
+                          </tr>
+                        </thead>
                       <tbody className="divide-y divide-zinc-100 bg-white">
                         {filteredStudents.length === 0 ? (
                           <tr>
@@ -4654,28 +4675,28 @@ export default function TeacherDashboardPage() {
                               }}
                               className="cursor-pointer hover:bg-[#5A77DF]/5 transition group"
                             >
-                              <td className="px-4 py-3.5">
-                                <div className="font-extrabold text-zinc-900 group-hover:text-[#5A77DF] transition text-xs">
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <div className="font-extrabold text-zinc-900 group-hover:text-[#5A77DF] transition text-xs whitespace-nowrap">
                                   {student.name}
                                 </div>
-                                <div className="text-3xs text-zinc-400 font-mono mt-0.5">
+                                <div className="text-3xs text-zinc-400 font-mono mt-0.5 whitespace-nowrap">
                                   NIS:{" "}
                                   <span className="text-zinc-600 font-bold">
                                     {student.nis || "-"}
                                   </span>
                                 </div>
                               </td>
-                              <td className="px-4 py-3.5">
-                                <span className="rounded-lg bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-1 text-2xs font-extrabold text-[#3E53A2]">
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <span className="inline-block whitespace-nowrap rounded-lg bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-1 text-2xs font-extrabold text-[#3E53A2]">
                                   {student.className}
                                 </span>
-                                <span className="text-3xs text-zinc-400 font-mono block mt-1">
+                                <span className="text-3xs text-zinc-400 font-mono block mt-1 whitespace-nowrap">
                                   {student.academicYear || "TA 2025/2026"}
                                 </span>
                               </td>
-                              <td className="px-4 py-3.5 text-center">
+                              <td className="px-4 py-3.5 text-center whitespace-nowrap">
                                 <span
-                                  className={`rounded-full px-2.5 py-0.5 text-3xs font-extrabold border ${
+                                  className={`inline-block whitespace-nowrap rounded-full px-2.5 py-0.5 text-3xs font-extrabold border ${
                                     student.isPastStudent
                                       ? "bg-amber-50 text-amber-700 border-amber-200"
                                       : "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -4684,8 +4705,8 @@ export default function TeacherDashboardPage() {
                                   {student.isPastStudent ? "Terdahulu" : "Aktif"}
                                 </span>
                               </td>
-                              <td className="px-4 py-3.5">
-                                <span className={`rounded-lg border px-2.5 py-1 text-2xs font-extrabold ${
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <span className={`inline-block whitespace-nowrap rounded-lg border px-2.5 py-1 text-2xs font-extrabold ${
                                   student.levelName === "Belum Pretest"
                                     ? "bg-zinc-100 border-zinc-200 text-zinc-600"
                                     : "bg-emerald-50 border-emerald-200 text-emerald-700"
@@ -4693,7 +4714,7 @@ export default function TeacherDashboardPage() {
                                   {student.levelName || "Belum Pretest"}
                                 </span>
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-4 py-3.5 whitespace-nowrap">
                                 <div className="flex items-center gap-3">
                                   <div className="h-2.5 w-28 rounded-full bg-zinc-100 overflow-hidden border border-zinc-200">
                                     <div
@@ -4708,33 +4729,9 @@ export default function TeacherDashboardPage() {
                                   </span>
                                 </div>
                               </td>
-                              {/* <td className="px-4 py-3.5">
-                                {student.moodScore > 0 ? (
-                                  <div className="flex items-center gap-1.5 font-mono">
-                                    <span
-                                      className={`inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-xs font-black border shadow-2xs ${
-                                        student.moodScore <= 2
-                                          ? "bg-rose-50 text-rose-700 border-rose-200"
-                                          : student.moodScore === 3
-                                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                      }`}
-                                    >
-                                      {student.moodScore}/5
-                                    </span>
-                                    {student.latestJournal && (
-                                      <span className="text-3xs text-zinc-400 font-sans font-medium">
-                                        Update
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-3xs text-zinc-400 italic font-mono">Belum isi</span>
-                                )}
-                              </td> */}
-                              <td className="px-4 py-3.5">
+                              <td className="px-4 py-3.5 whitespace-nowrap">
                                 <span
-                                  className={`rounded-full px-3 py-1 text-3xs font-extrabold border ${
+                                  className={`inline-block whitespace-nowrap rounded-full px-3 py-1 text-3xs font-extrabold border ${
                                     student.riskFlag
                                       ? "bg-rose-50 text-rose-700 border-rose-200"
                                       : student.mentalStatus?.includes("Sudah Pendampingan")
@@ -4751,7 +4748,7 @@ export default function TeacherDashboardPage() {
                                     : student.mentalStatus || "Stabil"}
                                 </span>
                               </td>
-                              <td className="px-4 py-3.5 text-right">
+                              <td className="px-4 py-3.5 text-right whitespace-nowrap">
                                 <button
                                   type="button"
                                   title="Lihat Halaman Nilai & Evaluasi Siswa"
@@ -4779,6 +4776,7 @@ export default function TeacherDashboardPage() {
                         )}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 </div>
 
@@ -5420,7 +5418,7 @@ export default function TeacherDashboardPage() {
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-zinc-150">
-                    <table className="min-w-full text-left text-xs divide-y divide-zinc-150">
+                    <table className="min-w-full text-left text-xs divide-y divide-zinc-150 whitespace-nowrap">
                       <thead className="bg-[#f5f7fc]">
                         <tr className="text-zinc-500 font-bold uppercase tracking-wider text-[10px]">
                           <th className="px-4 py-3">Mata Pelajaran</th>
@@ -5794,11 +5792,11 @@ export default function TeacherDashboardPage() {
                 );
 
                 return (
-                  <section className="space-y-6 animate-fadeIn text-left">
+                  <section className="space-y-6 animate-fadeIn text-left w-full max-w-full min-w-0">
                     {/* Header */}
-                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm">
+                    <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm w-full">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-3xs font-extrabold uppercase tracking-[0.25em] text-[#5A77DF] font-mono">
                             Mata Pelajaran {isWaliKelas ? "Kelas Binaan" : ""}
                           </p>
@@ -5813,7 +5811,7 @@ export default function TeacherDashboardPage() {
                           <button
                             type="button"
                             onClick={openAddSubjectModal}
-                            className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-xs font-extrabold text-white transition cursor-pointer shadow-sm shrink-0 flex items-center gap-1.5"
+                            className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-xs font-extrabold text-white transition cursor-pointer shadow-sm shrink-0 flex items-center gap-1.5 self-start sm:self-auto"
                           >
                             <PlusCircle className="w-4 h-4 text-white" />
                             <span>+ Tambah Kelas & Mapel</span>
@@ -5824,7 +5822,7 @@ export default function TeacherDashboardPage() {
 
 
                     {/* Subject List & Modules */}
-                    <div className="grid gap-6">
+                    <div className="space-y-6 w-full max-w-full min-w-0">
                       {filteredMapelSubjects.length === 0 ? (
                         <div className="rounded-2xl border border-[#5A77DF]/20 bg-white p-10 text-center text-xs font-medium text-zinc-500 shadow-sm">
                           {isWaliKelas
@@ -5835,14 +5833,14 @@ export default function TeacherDashboardPage() {
                         filteredMapelSubjects.map((sub) => (
                           <div
                             key={sub.id}
-                            className="rounded-2xl border border-[#5A77DF]/20 bg-white p-6 shadow-sm space-y-4"
+                            className="w-full max-w-full min-w-0 rounded-2xl border border-[#5A77DF]/20 bg-white p-5 sm:p-6 shadow-sm space-y-5 overflow-hidden"
                           >
-                            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-                              <div>
-                                <span className="rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-1 text-2xs font-extrabold text-[#3E53A2]">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 pb-4">
+                              <div className="min-w-0">
+                                <span className="inline-block rounded-full bg-[#5A77DF]/10 border border-[#5A77DF]/20 px-2.5 py-1 text-2xs font-extrabold text-[#3E53A2]">
                                   {sub.class.name} • {sub.class.major}
                                 </span>
-                                <h3 className="text-lg font-black text-zinc-900 mt-2">
+                                <h3 className="text-lg font-black text-zinc-900 mt-2 truncate">
                                   {sub.name}
                                 </h3>
                               </div>
@@ -5850,7 +5848,7 @@ export default function TeacherDashboardPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleStartAddModule(sub.id)}
-                                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-xs font-bold text-white transition cursor-pointer shadow-xs flex items-center gap-1.5"
+                                  className="rounded-xl bg-[#5A77DF] hover:bg-[#3E53A2] px-4 py-2 text-xs font-bold text-white transition cursor-pointer shadow-xs flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
                                 >
                                   <PlusCircle className="w-4 h-4 text-white" />
                                   <span>Tambah Modul</span>
@@ -5866,19 +5864,19 @@ export default function TeacherDashboardPage() {
                               );
                               return (
                                 <div className="mt-3 p-4 rounded-xl border border-cyan-200 bg-cyan-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left shadow-xs">
-                                  <div className="flex items-center gap-3">
+                                  <div className="flex items-center gap-3 min-w-0">
                                     <div className="h-9 w-9 rounded-xl bg-cyan-100 border border-cyan-200 text-cyan-800 flex items-center justify-center shrink-0 shadow-xs">
                                       <ClipboardList className="w-5 h-5 text-cyan-700" />
                                     </div>
-                                    <div>
-                                      <div className="text-xs font-extrabold text-cyan-900 flex items-center gap-2">
-                                        <span>
+                                    <div className="min-w-0">
+                                      <div className="text-xs font-extrabold text-cyan-900 flex items-center gap-2 truncate">
+                                        <span className="truncate">
                                           {subjectPretest
                                             ? `Pretest Mapel: ${subjectPretest.title}`
                                             : "Pretest Mata Pelajaran Belum Dibuat"}
                                         </span>
                                       </div>
-                                      <div className="text-3xs text-zinc-600 font-medium font-mono mt-0.5">
+                                      <div className="text-3xs text-zinc-600 font-medium font-mono mt-0.5 truncate">
                                         {subjectPretest
                                           ? `${subjectPretest.questions?.length || 0} Soal Pretest Aktif Untuk Mata Pelajaran Ini`
                                           : "Tes awal pengetahuan siswa untuk seluruh modul di mata pelajaran ini"}
@@ -5947,7 +5945,7 @@ export default function TeacherDashboardPage() {
                             })()}
 
                             {/* Modules Table List */}
-                            <div className="mt-4 space-y-3">
+                            <div className="mt-4 space-y-3 w-full max-w-full min-w-0">
                               <div className="flex items-center justify-between">
                                 <p className="text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono">
                                   Daftar Modul Pelajaran ({sub.modules.length})
@@ -5964,8 +5962,9 @@ export default function TeacherDashboardPage() {
                                   di atas untuk membuat modul pertama Anda.
                                 </div>
                               ) : (
-                                <div className="overflow-hidden rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm">
-                                  <table className="min-w-full divide-y divide-zinc-200 text-left text-xs">
+                                <div className="overflow-hidden rounded-2xl border border-[#5A77DF]/20 bg-white shadow-sm w-full max-w-full">
+                                  <div className="overflow-x-auto w-full">
+                                    <table className="min-w-full divide-y divide-zinc-200 text-left text-xs whitespace-nowrap">
                                     <thead className="bg-[#5A77DF]/10 border-b border-[#5A77DF]/20">
                                       <tr>
                                         <th className="px-4 py-3.5 text-3xs font-extrabold uppercase tracking-wider text-[#3E53A2] font-mono w-12 text-center">
@@ -6027,12 +6026,12 @@ export default function TeacherDashboardPage() {
                                               </td>
 
                                               {/* Title & Content Snippet */}
-                                              <td className="px-4 py-3.5 max-w-md">
-                                                <div className="font-extrabold text-zinc-900 text-xs group-hover:text-[#5A77DF] transition">
+                                              <td className="px-4 py-3.5 max-w-xs sm:max-w-md min-w-[200px]">
+                                                <div className="font-extrabold text-zinc-900 text-xs group-hover:text-[#5A77DF] transition truncate">
                                                   {mod.title}
                                                 </div>
                                                 {plainTextSnippet && (
-                                                  <p className="text-3xs text-zinc-500 line-clamp-1 font-medium mt-0.5 leading-relaxed">
+                                                  <p className="text-3xs text-zinc-500 truncate font-medium mt-0.5 leading-relaxed">
                                                     {plainTextSnippet}
                                                   </p>
                                                 )}
@@ -6043,7 +6042,7 @@ export default function TeacherDashboardPage() {
                                                       href={mod.video_url}
                                                       target="_blank"
                                                       rel="noreferrer"
-                                                      className="underline hover:text-[#3E53A2] truncate max-w-[280px]"
+                                                      className="underline hover:text-[#3E53A2] truncate max-w-[220px]"
                                                     >
                                                       Video YouTube
                                                     </a>
@@ -6131,7 +6130,8 @@ export default function TeacherDashboardPage() {
                                         },
                                       )}
                                     </tbody>
-                                  </table>
+                                    </table>
+                                  </div>
                                 </div>
                               )}
                             </div>

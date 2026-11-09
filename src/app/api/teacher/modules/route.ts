@@ -34,25 +34,33 @@ async function saveQuizInTx(
 
   let quiz = existingQuizzes.find((q) => q.type === type);
 
+  const formattedQuestions = questions
+    .filter((q: any) => q.question && q.question.trim())
+    .map((q: any) => ({
+      question: q.question.trim(),
+      options: {
+        create: (q.options || [])
+          .filter((opt: any) => opt.optionText && opt.optionText.trim())
+          .map((opt: any) => ({
+            option_text: opt.optionText.trim(),
+            is_correct: !!opt.isCorrect,
+          })),
+      },
+    }));
+
   if (!quiz) {
-    quiz = await tx.quiz.create({
+    await tx.quiz.create({
       data: {
         title: title.trim(),
         type,
         module_id: moduleId,
         subject_id: subjectId,
+        questions: {
+          create: formattedQuestions,
+        },
       },
-      include: { questions: { include: { options: true } } },
     });
   } else {
-    await tx.quiz.update({
-      where: { id: quiz.id },
-      data: {
-        title: title.trim(),
-        subject_id: subjectId,
-      },
-    });
-
     const existingQuestionIds = quiz.questions?.map((q: any) => q.id) || [];
     if (existingQuestionIds.length > 0) {
       await tx.option.deleteMany({
@@ -62,29 +70,17 @@ async function saveQuizInTx(
         where: { quiz_id: quiz.id },
       });
     }
-  }
 
-  for (const q of questions) {
-    if (!q.question || !q.options || !Array.isArray(q.options)) continue;
-
-    const questionRecord = await tx.question.create({
+    await tx.quiz.update({
+      where: { id: quiz.id },
       data: {
-        quiz_id: quiz.id,
-        question: q.question.trim(),
+        title: title.trim(),
+        subject_id: subjectId,
+        questions: {
+          create: formattedQuestions,
+        },
       },
     });
-
-    for (const opt of q.options) {
-      if (!opt.optionText) continue;
-
-      await tx.option.create({
-        data: {
-          question_id: questionRecord.id,
-          option_text: opt.optionText.trim(),
-          is_correct: !!opt.isCorrect,
-        },
-      });
-    }
   }
 }
 
@@ -157,24 +153,30 @@ export async function POST(request: Request) {
       });
     }
 
-    const newModule = await prisma.$transaction(async (tx) => {
-      const mod = await tx.module.create({
-        data: {
-          title: title.trim(),
-          content: content.trim(),
-          video_url: videoUrl ? videoUrl.trim() : null,
-          media_type: mediaType || "text",
-          category_id: category.id,
-          level_id: level.id,
-          subject_id: subject.id,
-        },
-      });
+    const newModule = await prisma.$transaction(
+      async (tx) => {
+        const mod = await tx.module.create({
+          data: {
+            title: title.trim(),
+            content: content.trim(),
+            video_url: videoUrl ? videoUrl.trim() : null,
+            media_type: mediaType || "text",
+            category_id: category.id,
+            level_id: level.id,
+            subject_id: subject.id,
+          },
+        });
 
-      // Save Posttest if provided
-      await saveQuizInTx(tx, "posttest", quizTitle, questions, mod.id, subject.id, []);
+        // Save Posttest if provided
+        await saveQuizInTx(tx, "posttest", quizTitle, questions, mod.id, subject.id, []);
 
-      return mod;
-    });
+        return mod;
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
 
     return NextResponse.json({
       success: true,
@@ -255,31 +257,37 @@ export async function PUT(request: Request) {
       });
     }
 
-    const updatedModule = await prisma.$transaction(async (tx) => {
-      const mod = await tx.module.update({
-        where: { id: modIdInt },
-        data: {
-          title: title.trim(),
-          content: content.trim(),
-          video_url: videoUrl ? videoUrl.trim() : null,
-          media_type: mediaType || "text",
-          level_id: level.id,
-        },
-      });
+    const updatedModule = await prisma.$transaction(
+      async (tx) => {
+        const mod = await tx.module.update({
+          where: { id: modIdInt },
+          data: {
+            title: title.trim(),
+            content: content.trim(),
+            video_url: videoUrl ? videoUrl.trim() : null,
+            media_type: mediaType || "text",
+            level_id: level.id,
+          },
+        });
 
-      // Save/Update Posttest
-      await saveQuizInTx(
-        tx,
-        "posttest",
-        quizTitle,
-        questions,
-        mod.id,
-        targetModule.subject_id!,
-        targetModule.quizzes
-      );
+        // Save/Update Posttest
+        await saveQuizInTx(
+          tx,
+          "posttest",
+          quizTitle,
+          questions,
+          mod.id,
+          targetModule.subject_id!,
+          targetModule.quizzes
+        );
 
-      return mod;
-    });
+        return mod;
+      },
+      {
+        maxWait: 15000,
+        timeout: 30000,
+      }
+    );
 
     return NextResponse.json({
       success: true,
